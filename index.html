@@ -146,6 +146,9 @@ function App(){
   const[ordFilter,setOrdFilter]=useState("all");
   const[npSettings,setNpSettings]=useState({senderBranch:"15",senderCity:"Київ",senderPhone:"0501234567",senderName:"IS EASY",controlPay:true,cashOnDelivery:true});
   const[recording,setRecording]=useState(false);
+  const[categories,setCategories]=useState(["Весна-Осінь","Літо","Зима"]);const[newCat,setNewCat]=useState("");const[editCatIdx,setEditCatIdx]=useState(null);const[editCatVal,setEditCatVal]=useState("");
+  const[showProdPicker,setShowProdPicker]=useState(false);const[prodPickerSearch,setProdPickerSearch]=useState("");const[prodPickerCat,setProdPickerCat]=useState("all");
+  const[showMobileClientCard,setShowMobileClientCard]=useState(false);
 
   const sosEnd=useRef(null);const ce=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;});
@@ -210,6 +213,36 @@ function App(){
     r.onresult=(e)=>{const t=e.results[0][0].transcript;setInput(prev=>prev+(prev?" ":"")+t);setRecording(false);};
     r.onerror=()=>{setRecording(false);noti("Помилка розпізнавання");};r.onend=()=>setRecording(false);
     r.start();setRecording(true);};
+  const saveProductsToDB=()=>{
+    api("/api/products",{method:"POST",body:JSON.stringify(products)}).then(()=>noti("Товари збережено")).catch(e=>console.error("Save error",e));
+  };
+  
+  const handleAddProduct=()=>{
+    const newProd={id:Date.now(),name:"Новий товар",sku:"ULT-NEW-"+String(products.length+1).padStart(3,"0"),price:0,cost:0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:"Весна-Осінь",img:""};
+    setProducts(p=>[...p,newProd]);
+    saveProductsToDB();
+    noti("Товар додано");
+  };
+  
+  const handleDeleteProduct=(pid)=>{
+    setProducts(pr=>pr.filter(x=>x.id!==pid));
+    saveProductsToDB();
+    noti("Товар видалено");
+  };
+  
+  const handleUpdateProduct=(pid,field,value)=>{
+    setProducts(pr=>pr.map(x=>x.id===pid?{...x,[field]:value}:x));
+    saveProductsToDB();
+  };
+  
+  const handleImportCSV=()=>{const inp=document.createElement("input");inp.type="file";inp.onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{const text=ev.target.result;const lines=text.split("\n").filter(l=>l.trim());const imported=[];lines.slice(1).forEach((line,idx)=>{const[name,sku,price,cost,category,img]=(line.match(/(?:"(?:[^"]*(?:""[^"]*)*)"|[^,]*)/g)||[]).map(f=>f.replace(/^"|"$/g,"").replace(/""/g,'"').trim());if(name&&sku){imported.push({id:Date.now()+idx,name,sku,price:parseInt(price)||0,cost:parseInt(cost)||0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:category||"Весна-Осінь",img:img||""});}});if(imported.length){setProducts(prev=>[...prev,...imported]);saveProductsToDB();noti("Імпортовано: "+imported.length+" товарів");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
+  
+  const handleDuplicateProduct=(p)=>{
+    const dup={...p,id:Date.now(),name:p.name+" (копія)",sku:p.sku+"-COPY"};
+    setProducts(prev=>[...prev,dup]);
+    saveProductsToDB();
+    noti("Товар дубльовано");
+  };
 
   const handleRepairClick=(e)=>{if(!repair)return;e.preventDefault();const rect=e.currentTarget.getBoundingClientRect();setPinInput({x:e.clientX-rect.left,y:e.clientY-rect.top,absX:e.clientX,absY:e.clientY});setPinText("");};
   const savePin=()=>{if(!pinText.trim()||!pinInput)return;setPins(p=>[...p,{id:Date.now(),x:pinInput.x,y:pinInput.y,text:pinText.trim(),zone:pinInput.absX<320?"Ліва панель":pinInput.absX>window.innerWidth-320?"Права панель":"Центр"}]);setPinInput(null);setPinText("");noti("Мітку додано!");};
@@ -288,6 +321,7 @@ function App(){
             <td style={{fontWeight:700,color:p.profit>=0?T.accent:T.danger}}>{p.profit.toLocaleString()} грн</td>
           </tr>)}</tbody>
         </table></div>
+      )}
       </div>
     </div>;};
 
@@ -313,11 +347,79 @@ function App(){
             <td style={{fontSize:12,color:T.textSec}}>{o.ttn||"—"}</td>
           </tr>})}</tbody>
         </table></div>
+      )}
       </div>
     </div>;};
 
   /* ═══ PRODUCTS PAGE ═══ */
-  const ProductsPage=()=>{
+  
+  /* ═══ PRODUCT PICKER COMPONENT ═══ */
+
+  /* ═══ CLIENT CARD OVERLAY (MOBILE) ═══ */
+  const ClientCardOverlay=({onClose})=>{if(!conv)return null;const orders=conv.orders||[];
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:80,display:"flex",alignItems:"flex-end"}}>
+      <div style={{width:"100%",maxHeight:"90vh",background:T.surface,borderRadius:`${T.cardRadius}px ${T.cardRadius}px 0 0`,display:"flex",flexDirection:"column",animation:"slideUp .2s ease",overflowY:"auto"}}>
+        <div style={{padding:"14px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:T.surface,zIndex:2}}>
+          <span style={{fontWeight:700,fontSize:15}}>Клієнт</span>
+          <button onClick={onClose} style={{padding:"6px 12px",background:T.dangerLight,color:T.danger,border:"none",borderRadius:T.btnRadius,cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{padding:"14px"}}>
+          <div style={{display:"flex",gap:12,marginBottom:16}}>
+            <Av name={conv.name} size={60}/>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:15}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div>
+              <div style={{fontSize:13,color:T.textSec,marginBottom:8}}>@{conv.username}</div>
+              {conv.cd&&<div style={{fontSize:12,color:T.textSec}}>📞 {conv.cd.phone||"—"}<br/>🏙 {conv.cd.city||"—"}</div>}
+            </div>
+          </div>
+          {conv.cd&&<div style={{background:T.surfaceAlt,borderRadius:12,padding:12,marginBottom:14}}>
+            {[["📞 Телефон",conv.cd.phone,"phone"],["🏙 Місто",conv.cd.city,"city"],["🏪 Відд.",conv.cd.branch,"branch"]].map(([k,v,f])=>
+              <div key={f} style={{marginBottom:10}}>
+                <div style={{fontSize:11,color:T.textSec,fontWeight:600,marginBottom:4}}>{k}</div>
+                <input value={v||""} onChange={e=>updateClient(f,e.target.value)} style={{width:"100%",padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surface}}/>
+              </div>)}
+          </div>}
+          {!conv.cd&&<button onClick={()=>{const d=parseCD(conv.msgs.find(m=>m.parsed)?.text);if(d)mkClient(d);onClose();}} style={{width:"100%",padding:"12px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:14}}>Створити клієнта</button>}
+          {conv.cd&&<div><div style={{fontSize:12,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>Замовлення ({orders.length})</div>
+            {orders.map(o=>{const st=ORDER_STATUSES.find(s=>s.id===o.status);return <div key={o.id} style={{background:T.surfaceAlt,borderRadius:10,padding:10,marginBottom:8,border:`1px solid ${T.border}`,fontSize:12}}>
+              <div style={{fontWeight:600,marginBottom:4}}>{o.product?.name}</div>
+              <div style={{fontSize:11,color:T.textSec,marginBottom:6}}>{o.product?.sku} | р.{o.size} | {o.total}₴</div>
+              <select value={o.status} onChange={e=>updateOrder(o.id,{status:e.target.value})} style={{width:"100%",padding:"4px 8px",border:`1px solid ${st?.color}`,borderRadius:8,fontSize:11,background:st?.color+"12",color:st?.color,outline:"none",cursor:"pointer",fontWeight:600}}>
+                {ORDER_STATUSES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>)}</div>}
+        </div>
+      </div>
+    </div>;
+  };
+
+  const ProductPicker=({onSelect,onClose})=>{
+    const filtered=products.filter(p=>{
+      const matchSearch=prodPickerSearch?p.name.toLowerCase().includes(prodPickerSearch.toLowerCase())||p.sku.toLowerCase().includes(prodPickerSearch.toLowerCase()):true;
+      const matchCat=prodPickerCat==="all"||p.category===prodPickerCat;
+      return matchSearch&&matchCat;
+    });
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.3)",display:"flex",alignItems:"flex-end",zIndex:100}}>
+      <div style={{width:"100%",maxHeight:"80vh",background:T.surface,borderRadius:`${T.cardRadius}px ${T.cardRadius}px 0 0`,display:"flex",flexDirection:"column",animation:"slideUp .2s ease"}}>
+        <div style={{padding:"14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
+          <input type="text" placeholder="Пошук..." value={prodPickerSearch} onChange={e=>setProdPickerSearch(e.target.value)} style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none"}}/>
+          <button onClick={onClose} style={{padding:"8px 12px",background:T.dangerLight,color:T.danger,border:"none",borderRadius:T.btnRadius,cursor:"pointer",fontWeight:600}}>✕</button>
+        </div>
+        <select value={prodPickerCat} onChange={e=>setProdPickerCat(e.target.value)} style={{margin:"8px 14px 0 14px",padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none"}}>
+          <option value="all">Всі категорії</option>
+          {categories.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:10}}>
+          {filtered.map(p=>(<div key={p.id} onClick={()=>onSelect(p)} style={{background:T.surfaceAlt,borderRadius:T.cardRadius,overflow:"hidden",cursor:"pointer",border:`2px solid ${T.border}`,transition:"all .15s"}}>
+            <img src={p.img} alt={p.name} style={{width:"100%",height:100,objectFit:"cover"}}/>
+            <div style={{padding:"6px",fontSize:10,fontWeight:600,textAlign:"center"}}>{p.name.substring(0,15)}</div>
+          </div>))}
+        </div>
+      </div>
+    </div>;
+  };
+
+const ProductsPage=()=>{
     const cats=[...new Set(products.map(p=>p.category))];
     const filt=products.filter(p=>{if(prodCat!=="all"&&p.category!==prodCat)return false;if(prodSearch){const s=prodSearch.toLowerCase();return p.name.toLowerCase().includes(s)||p.sku.toLowerCase().includes(s);}return true;});
     const parseCsvLine=(line)=>{const res=[];let cur="";let inQ=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else{inQ=!inQ;}}else if(c===";"&&!inQ){res.push(cur.trim());cur="";}else{cur+=c;}}res.push(cur.trim());return res;};
@@ -332,35 +434,67 @@ function App(){
         imported.push({id:idx++,name:p.title,sku:firstSku,price:Math.round(price),cost:0,stock:0,sizes:sizes.length?sizes:(gender==="m"?[40,41,42,43,44,45]:gender==="f"?[36,37,38,39,40,41]:[36,37,38,39,40,41,42,43,44,45]),gender,category:cat,img:p.photo||""});});
       if(imported.length){setProducts(imported);noti("Імпортовано: "+imported.length+" товарів");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
     const handleExportCSV=()=>{const hdr="Назва;Артикул;Ціна;Собівартість;Категорія;Розміри;Стать;Фото\n";const rows=products.map(p=>[p.name,p.sku,p.price,p.cost,p.category,p.sizes.join(","),p.gender==="m"?"Ч":p.gender==="f"?"Ж":"Ж+Ч",p.img].join(";")).join("\n");const blob=new Blob(["\uFEFF"+hdr+rows],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="is-easy-products.csv";a.click();noti("CSV експортовано");};
-    const dupProd=(p)=>{setProducts(prev=>[...prev,{...p,id:Date.now(),name:p.name+" (копія)",sku:p.sku+"-COPY"}]);noti("Товар дубльовано");};
+    const dupProd=(p)=>handleDuplicateProduct(p);
 
     return <div style={{flex:1,overflowY:"auto",padding:isMobile?12:28,animation:"fadeIn .3s ease"}}>
-      <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
+      {isMobile?(
+        <div>
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+            <input type="text" placeholder="Пошук товару..." value={prodSearch} onChange={e=>setProdSearch(e.target.value)} style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,outline:"none",fontSize:13}}/>
+            <select value={prodCat} onChange={e=>setProdCat(e.target.value)} style={{padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,outline:"none",fontSize:13}}>
+              <option value="all">Всі кат.</option>
+              {categories.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:16}}>
+            {filt.map(p=>(<div key={p.id} style={{background:T.surface,borderRadius:T.cardRadius,overflow:"hidden",boxShadow:T.shadow}}>
+              <img src={p.img} alt={p.name} style={{width:"100%",height:140,objectFit:"cover"}}/>
+              <div style={{padding:"8px"}}>
+                <div style={{fontSize:12,fontWeight:600,lineHeight:1.2,minHeight:24,marginBottom:4}}>{p.name}</div>
+                <div style={{fontSize:10,color:T.textSec,marginBottom:6}}>{p.sku}</div>
+                <div style={{fontSize:11,marginBottom:6}}>{p.cost}₴ | {p.price}₴</div>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={()=>setEditingProd(p)} style={{flex:1,padding:"4px",fontSize:10,background:T.primary,color:"#fff",border:"none",borderRadius:6,cursor:"pointer"}}>✎</button>
+                  <button onClick={()=>dupProd(p)} style={{flex:1,padding:"4px",fontSize:10,background:T.primaryLight,color:T.primary,border:"none",borderRadius:6,cursor:"pointer"}}>📋</button>
+                  <button onClick={()=>handleDeleteProduct(p.id)} style={{flex:1,padding:"4px",fontSize:10,background:T.dangerLight,color:T.danger,border:"none",borderRadius:6,cursor:"pointer"}}>✕</button>
+                </div>
+              </div>
+            </div>))}
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={handleImportCSV} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 CSV</button>
+            <button onClick={handleAddProduct} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
+          </div>
+        </div>
+      ):(
+        <div>
+          <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
         <input value={prodSearch} onChange={e=>setProdSearch(e.target.value)} placeholder="Пошук..." style={{padding:"9px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",width:200,background:T.surfaceAlt}}/>
         <select value={prodCat} onChange={e=>setProdCat(e.target.value)} style={{padding:"9px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}>
           <option value="all">Усі категорії</option>{cats.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
         <button onClick={handleCSV} style={{padding:"9px 16px",background:T.text,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 Імпорт CSV</button>
         <button onClick={handleExportCSV} style={{padding:"9px 16px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📤 Експорт CSV</button>
-        <button onClick={()=>{setProducts(p=>[...p,{id:Date.now(),name:"Новий товар",sku:"ULT-NEW-"+String(products.length+1).padStart(3,"0"),price:0,cost:0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:"Весна-Осінь",img:""}]);noti("Товар додано");}} style={{padding:"9px 16px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
+        <button onClick={handleAddProduct} style={{padding:"9px 16px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
       </div>
       <div className="card">
         <div style={{overflowX:"auto"}}><table>
           <thead><tr><th style={{width:50}}>Фото</th><th>Назва</th><th>Артикул</th><th>Категорія</th><th>Розміри</th><th>Собівартість</th><th>Ціна</th><th>Дії</th></tr></thead>
           <tbody>{filt.map(p=><tr key={p.id}>
             <td><div style={{width:44,height:44,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{p.img?<img src={p.img} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.parentNode.innerText="👟";}}/>:"👟"}</div></td>
-            <td><input value={p.name} onChange={e=>{const v=e.target.value;setProducts(pr=>pr.map(x=>x.id===p.id?{...x,name:v}:x));}} style={{border:"none",fontWeight:600,fontSize:13,width:"100%",outline:"none",background:"transparent"}}/></td>
-            <td><input value={p.sku} onChange={e=>{const v=e.target.value;setProducts(pr=>pr.map(x=>x.id===p.id?{...x,sku:v}:x));}} style={{border:"none",fontSize:12,color:T.textSec,width:120,outline:"none",background:"transparent"}}/></td>
-            <td><input value={p.category} onChange={e=>{const v=e.target.value;setProducts(pr=>pr.map(x=>x.id===p.id?{...x,category:v}:x));}} style={{border:"none",fontSize:12,width:110,outline:"none",background:"transparent"}}/></td>
-            <td style={{fontSize:11}}>{p.sizes[0]}-{p.sizes[p.sizes.length-1]} <select value={p.gender} onChange={e=>{const v=e.target.value;const sz=v==="m"?[40,41,42,43,44,45]:v==="f"?[36,37,38,39,40,41]:[36,37,38,39,40,41,42,43,44,45];setProducts(pr=>pr.map(x=>x.id===p.id?{...x,gender:v,sizes:sz}:x));}} style={{border:"none",fontSize:10,outline:"none",background:"transparent"}}><option value="m">Ч</option><option value="f">Ж</option><option value="u">Ж+Ч</option></select></td>
-            <td><input type="number" value={p.cost} onChange={e=>{const v=parseInt(e.target.value)||0;setProducts(pr=>pr.map(x=>x.id===p.id?{...x,cost:v}:x));}} style={{border:"none",width:60,fontSize:12,outline:"none",background:"transparent"}}/></td>
-            <td><input type="number" value={p.price} onChange={e=>{const v=parseInt(e.target.value)||0;setProducts(pr=>pr.map(x=>x.id===p.id?{...x,price:v}:x));}} style={{border:"none",width:60,fontSize:13,fontWeight:700,outline:"none",background:"transparent"}}/></td>
+            <td><input value={p.name} onChange={e=>{const v=e.target.value;handleUpdateProduct(p.id,"name",v);}} style={{border:"none",fontWeight:600,fontSize:13,width:"100%",outline:"none",background:"transparent"}}/></td>
+            <td><input value={p.sku} onChange={e=>{const v=e.target.value;handleUpdateProduct(p.id,"sku",v);}} style={{border:"none",fontSize:12,color:T.textSec,width:120,outline:"none",background:"transparent"}}/></td>
+            <td><input value={p.category} onChange={e=>{const v=e.target.value;handleUpdateProduct(p.id,"category",v);}} style={{border:"none",fontSize:12,width:110,outline:"none",background:"transparent"}}/></td>
+            <td style={{fontSize:11}}>{p.sizes[0]}-{p.sizes[p.sizes.length-1]} <select value={p.gender} onChange={e=>{const v=e.target.value;const sz=v==="m"?[40,41,42,43,44,45]:v==="f"?[36,37,38,39,40,41]:[36,37,38,39,40,41,42,43,44,45];handleUpdateProduct(p.id,"gender",v);handleUpdateProduct(p.id,"sizes",sz);}} style={{border:"none",fontSize:10,outline:"none",background:"transparent"}}><option value="m">Ч</option><option value="f">Ж</option><option value="u">Ж+Ч</option></select></td>
+            <td><input type="number" value={p.cost} onChange={e=>{const v=parseInt(e.target.value)||0;handleUpdateProduct(p.id,"cost",v);}} style={{border:"none",width:60,fontSize:12,outline:"none",background:"transparent"}}/></td>
+            <td><input type="number" value={p.price} onChange={e=>{const v=parseInt(e.target.value)||0;handleUpdateProduct(p.id,"price",v);}} style={{border:"none",width:60,fontSize:13,fontWeight:700,outline:"none",background:"transparent"}}/></td>
             <td><div style={{display:"flex",gap:4}}>
               <button onClick={()=>dupProd(p)} style={{padding:"4px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,cursor:"pointer",background:T.surfaceAlt}} title="Дублювати">📋</button>
-              <button onClick={()=>setProducts(pr=>pr.filter(x=>x.id!==p.id))} style={{padding:"4px 10px",border:"1px solid #fecaca",borderRadius:8,fontSize:11,cursor:"pointer",background:"#fef2f2",color:T.danger}} title="Видалити">✕</button>
+              <button onClick={()=>handleDeleteProduct(p.id)} style={{padding:"4px 10px",border:"1px solid #fecaca",borderRadius:8,fontSize:11,cursor:"pointer",background:"#fef2f2",color:T.danger}} title="Видалити">✕</button>
             </div></td>
           </tr>)}</tbody>
         </table></div>
+      )}
       </div>
     </div>;};
 
@@ -379,7 +513,7 @@ function App(){
       </div>
       {/* ORDERS */}
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
-        <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Замовлення ({orders.length}) <span onClick={()=>{setShowProds(true);}} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>+ Додати</span></div>
+        <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Замовлення ({orders.length}) <span onClick={()=>{setShowProdPicker(true);}} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>+ Додати</span></div>
         {orders.map(o=>{const st=ORDER_STATUSES.find(s=>s.id===o.status);return <div key={o.id} style={{background:T.surfaceAlt,borderRadius:12,padding:12,border:`1px solid ${T.border}`,marginBottom:8}}>
           <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
             <div style={{width:38,height:38,borderRadius:10,background:T.surface,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,flexShrink:0}}>{o.type==="repair"?"🔧":o.type==="exchange"?"🔄":"👟"}</div>
@@ -513,9 +647,9 @@ function App(){
       {/* INPUT */}
       <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 14px",background:T.surface,flexShrink:0}}>
         {showQR&&<div className="card" style={{padding:6,marginBottom:8,maxHeight:140,overflowY:"auto",boxShadow:T.shadowMd}}>{QR.map(q=><div key={q.id} onClick={()=>{send(q.tx);setShowQR(false);}} style={{padding:"7px 12px",cursor:"pointer",borderRadius:8,fontSize:13,transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{q.t}</div>)}</div>}
-        {showProds&&<div className="card" style={{padding:6,marginBottom:8,maxHeight:220,overflowY:"auto",boxShadow:T.shadowMd}}>{products.map(p=><div key={p.id} onClick={()=>{setProdModal(p);setShowProds(false);}} style={{padding:"7px 12px",cursor:"pointer",borderRadius:8,fontSize:13,transition:"background .1s",display:"flex",alignItems:"center",gap:8}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{p.img?<img src={p.img} style={{width:28,height:28,borderRadius:6,objectFit:"cover"}}/>:<span>👟</span>} {p.name} — {p.price} грн</div>)}</div>}
+        {showProdPicker&&<ProductPicker onSelect={(p)=>{setProdModal(p);setSelSize(null);setShowProdPicker(false);}} onClose={()=>setShowProdPicker(false)}/>}
         <div style={{display:"flex",gap:6,marginBottom:8}}>
-          {[["📎","Файл",false,()=>noti("Демо")],["⚡","Швидкі",showQR,()=>{setShowQR(!showQR);setShowProds(false);}],["🏷️","Товар",showProds,()=>{setShowProds(!showProds);setShowQR(false);}]].map(([ic,lb,a,fn],i)=>
+          {[["📎","Файл",false,()=>noti("Демо")],["⚡","Швидкі",showQR,()=>{setShowQR(!showQR);setShowProds(false);}],["🏷️","Товар",showProdPicker,()=>{setShowProdPicker(!showProdPicker);setShowQR(false);}]].map(([ic,lb,a,fn],i)=>
             <div key={i} onClick={fn} style={{padding:"5px 12px",border:`1px solid ${a?T.primary:T.border}`,borderRadius:20,fontSize:12,cursor:"pointer",background:a?T.primary:T.surface,color:a?"#fff":T.textSec,display:"flex",alignItems:"center",gap:4,fontWeight:500,transition:"all .15s"}}>{ic} {lb}</div>)}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
@@ -524,6 +658,8 @@ function App(){
           <button onClick={()=>send(input)} style={{width:40,height:40,borderRadius:"50%",background:T.primary,color:"#fff",border:"none",cursor:"pointer",fontSize:16,flexShrink:0,boxShadow:`0 2px 8px ${T.primary}40`}}>➤</button>
         </div>
       </div>
+    </>:<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.textSec,flexDirection:"column",gap:10}}
+      {isMobile&&<button onClick={()=>setShowMobileClientCard(true)} style={{position:"fixed",bottom:40,right:20,width:60,height:60,borderRadius:"50%",background:T.primary,color:"#fff",border:"none",fontSize:28,cursor:"pointer",zIndex:50,boxShadow:`0 4px 12px ${T.primary}40`}}>+</button>}
     </>:<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.textSec,flexDirection:"column",gap:10}}><span style={{fontSize:52,opacity:.6}}>💬</span><span style={{fontWeight:500}}>Оберіть чат</span></div>}
   </div>;
 
