@@ -386,7 +386,7 @@ function App(){
               <select value={o.status} onChange={e=>updateOrder(o.id,{status:e.target.value})} style={{width:"100%",padding:"4px 8px",border:`1px solid ${st?.color}`,borderRadius:8,fontSize:11,background:st?.color+"12",color:st?.color,outline:"none",cursor:"pointer",fontWeight:600}}>
                 {ORDER_STATUSES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
-            </div>)}</div>}
+            </div>})</div>}
         </div>
       </div>
     </div>;
