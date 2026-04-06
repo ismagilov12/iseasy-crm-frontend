@@ -646,7 +646,7 @@ function App(){
     const rest=filtered.filter(p=>p.match_score<0.65).sort((a,b)=>(b.payment_date||"").localeCompare(a.payment_date||""));
     const fmtDate=d=>{if(!d)return"";try{const dt=new Date(d);return dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit"})+" "+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}catch(e){return d.split("T")[0]||""}};
     const srcBadge=s=>s==="monobank"?{bg:"#e0f2fe",color:"#0369a1",label:"🏦 Mono"}:{bg:"#fef3c7",color:"#92400e",label:"💳 WFP"};
-    const PayRow=({p,accent})=>{const b=srcBadge(p.source);const isSel=sel===p.id;return <div onClick={()=>setSel(isSel?null:p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:isSel?(accent?T.accentLight:"#eff6ff"):T.surface,border:`1px solid ${isSel?(accent?T.accent:T.primary):T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
+    const PayRow=({p,accent})=>{const b=srcBadge(p.source);const isSel=sel===p.id;return <div onClick={()=>setSel(isSel?null:p.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:isSel?(accent?T.accentLight:"#eff6ff"):T.surface,border:`1px solid ${isSel?(accent?T.accent:T.primary):T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span style={{fontSize:10,padding:"1px 6px",background:b.bg,color:b.color,borderRadius:6,fontWeight:600}}>{b.label}</span>
@@ -654,9 +654,12 @@ function App(){
           {p.match_score>=0.65&&<span style={{fontSize:10,color:T.accent,fontWeight:700}}>{Math.round(p.match_score*100)}%</span>}
           {p.match_score>0&&p.match_score<0.65&&<span style={{fontSize:10,color:T.warn,fontWeight:600}}>{Math.round(p.match_score*100)}%</span>}
         </div>
-        <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
+        <div style={{fontSize:10,color:T.textSec,marginTop:2}}>{fmtDate(p.payment_date)}</div>
       </div>
-      {isSel&&<button onClick={e=>{e.stopPropagation();handleMatch(p.id,curOrder?.id)}} style={{padding:"5px 12px",background:accent?T.accent:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Підтвердити</button>}
+      <div style={{textAlign:"right",flexShrink:0}}>
+        <div style={{fontWeight:700,fontSize:14,color:T.accent}}>{p.amount}₴</div>
+        {isSel&&<button onClick={e=>{e.stopPropagation();handleMatch(p.id,curOrder?.id)}} style={{padding:"4px 10px",background:accent?T.accent:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",marginTop:3}}>Підтвердити</button>}
+      </div>
     </div>};
     return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`}}>
       {/* Search + Sync */}
