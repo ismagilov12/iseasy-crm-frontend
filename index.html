@@ -604,15 +604,26 @@ function App(){
 
   /* ═══ PAYMENT PICKER COMPONENT ═══ */
   const PaymentPicker=({conv,curOrder,onMatch,noti})=>{
-    const[pays,setPays]=useState([]);const[loading,setLoading]=useState(true);const[sel,setSel]=useState(null);const[search,setSearch]=useState("");
-    useEffect(()=>{
-      (async()=>{
-        const surname=(conv.cd?.surname||conv.name||"").trim();
-        const data=await api("/api/payments/suggest?client_name="+encodeURIComponent(surname)+"&conversation_id="+(conv.id||0)+"&days=3");
-        if(data&&Array.isArray(data))setPays(data);
-        setLoading(false);
-      })();
-    },[conv.id]);
+    const[pays,setPays]=useState([]);const[loading,setLoading]=useState(true);const[sel,setSel]=useState(null);const[search,setSearch]=useState("");const[syncing,setSyncing]=useState(false);
+    const loadPays=async()=>{
+      setLoading(true);
+      const surname=(conv.cd?.surname||conv.name||"").trim();
+      const data=await api("/api/payments/suggest?client_name="+encodeURIComponent(surname)+"&conversation_id="+(conv.id||0)+"&days=3");
+      if(data&&Array.isArray(data))setPays(data);
+      setLoading(false);
+    };
+    useEffect(()=>{loadPays();},[conv.id]);
+    const doSync=async()=>{
+      setSyncing(true);
+      try{
+        const r=await api("/api/monobank/sync",{method:"POST",body:JSON.stringify({days:3})});
+        if(r&&r.status==="ok"){
+          noti("Синхронізовано: "+r.synced+" нових оплат"+(r.errors&&r.errors.length>0?" (помилки: "+r.errors.length+")":""));
+          await loadPays();
+        }else{noti("Помилка синхронізації: "+(r?.error||r?.detail||"невідома"));}
+      }catch(e){noti("Помилка синхронізації");}
+      setSyncing(false);
+    };
     const suggested=pays.filter(p=>p.match_score>=0.65);
     const filtered=search?pays.filter(p=>(p.payer_name||"").toLowerCase().includes(search.toLowerCase())||String(p.amount).includes(search)):pays;
     const rest=filtered.filter(p=>p.match_score<0.65);
@@ -632,17 +643,20 @@ function App(){
       {isSel&&p.is_matched&&<span style={{fontSize:10,color:T.accent,fontWeight:700,whiteSpace:"nowrap"}}>✅ Підтверджено</span>}
     </div>};
     return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`}}>
-      {/* Search */}
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Пошук по імені або сумі..." style={{width:"100%",padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none",background:T.surface,marginBottom:8}}/>
+      {/* Search + Sync */}
+      <div style={{display:"flex",gap:6,marginBottom:8}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Пошук по імені або сумі..." style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none",background:T.surface}}/>
+        <button onClick={doSync} disabled={syncing} style={{padding:"6px 12px",background:syncing?"#e5e7eb":"#e0f2fe",color:syncing?"#9ca3af":"#0369a1",border:"1px solid "+(syncing?"#d1d5db":"#bae6fd"),borderRadius:8,fontSize:11,fontWeight:700,cursor:syncing?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>{syncing?"⏳":"🔄"} Sync</button>
+      </div>
       <div style={{maxHeight:300,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
         {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
-          {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає оплат за останні 3 дні</div>}
+          {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає оплат за останні 3 дні<br/><span style={{fontSize:11,color:T.primary,cursor:"pointer"}} onClick={doSync}>Натисніть 🔄 Sync щоб завантажити з Monobank</span></div>}
           {!search&&suggested.length>0&&<div style={{marginBottom:6}}>
             <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>✨ Рекомендовані збіги:</div>
             {suggested.map(p=><PayRow key={p.id} p={p} accent/>)}
           </div>}
           {rest.length>0&&<div>
-            <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{!search&&suggested.length>0?"Інші оплати:":"Всі незіставлені оплати:"}</div>
+            <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{!search&&suggested.length>0?"Інші оплати:":"Всі оплати:"}</div>
             {rest.map(p=><PayRow key={p.id} p={p}/>)}
           </div>}
         </>}
