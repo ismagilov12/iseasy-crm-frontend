@@ -614,7 +614,7 @@ function App(){
     },[conv.id]);
     const suggested=pays.filter(p=>p.match_score>=0.65);
     const rest=pays.filter(p=>p.match_score<0.65);
-    const fmtDate=d=>{if(!d)return"";try{return new Date(d).toLocaleDateString("uk",{day:"2-digit",month:"2-digit",year:"2-digit"})}catch(e){return d.split("T")[0]||""}};
+    const fmtDate=d=>{if(!d)return"";try{const dt=new Date(d);return dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit",year:"2-digit"})+" "+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}catch(e){return d.split("T")[0]||""}};
     const srcBadge=s=>s==="monobank"?{bg:"#e0f2fe",color:"#0369a1",label:"🏦 Mono"}:{bg:"#fef3c7",color:"#92400e",label:"💳 WFP"};
     return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`,maxHeight:280,overflowY:"auto"}}>
       {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
@@ -878,10 +878,10 @@ const ProductsPage=()=>{
         {/* Matched payments for this conversation (history) */}
         {conv._matchedPays&&conv._matchedPays.length>0&&<div style={{marginBottom:8}}>
           <div style={{fontSize:10,fontWeight:700,color:T.accent,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Підтверджені оплати:</div>
-          {conv._matchedPays.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",background:T.accentLight,borderRadius:8,marginBottom:4,fontSize:12}}>
-            <span><span style={{fontWeight:600}}>{p.payer_name||"—"}</span> <span style={{color:T.textSec,fontSize:10}}>{p.source==="monobank"?"🏦":"💳"}</span></span>
+          {conv._matchedPays.map(p=>{const dt=p.payment_date?new Date(p.payment_date):null;const timeStr=dt?dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit"})+" "+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):"";return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",background:T.accentLight,borderRadius:8,marginBottom:4,fontSize:12}}>
+            <div><span style={{fontWeight:600}}>{p.payer_name||"—"}</span> <span style={{color:T.textSec,fontSize:10}}>{p.source==="monobank"?"🏦":"💳"}</span>{timeStr&&<span style={{color:T.textSec,fontSize:10,marginLeft:4}}>{timeStr}</span>}</div>
             <span style={{fontWeight:700,color:T.accent}}>+{p.amount}₴</span>
-          </div>)}
+          </div>})}
         </div>}
 
         {/* Payment picker — dropdown with fuzzy matching */}
