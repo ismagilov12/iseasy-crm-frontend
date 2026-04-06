@@ -160,6 +160,12 @@ function App(){
   const[ordFilter,setOrdFilter]=useState("all");
   const[npSettings,setNpSettings]=useState({senderBranch:"15",senderCity:"Київ",senderPhone:"0501234567",senderName:"IS EASY",controlPay:true,cashOnDelivery:true});
   const[recording,setRecording]=useState(false);
+  const[wfpSettings,setWfpSettings]=useState({merchant_account:"",merchant_secret:"",merchant_domain:""});
+  const[monoSettings,setMonoSettings]=useState({api_token:"",webhook_url:"https://iseasy-crm-api.vercel.app/webhook/monobank"});
+  const[wfpStatus,setWfpStatus]=useState("loading");const[monoStatus,setMonoStatus]=useState("loading");
+  const[wfpSaving,setWfpSaving]=useState(false);const[monoSaving,setMonoSaving]=useState(false);
+  const[monoInfo,setMonoInfo]=useState(null);
+  const[unmatchedPays,setUnmatchedPays]=useState([]);
   const[categories,setCategories]=useState(["Весна-Осінь","Літо","Зима"]);const[newCat,setNewCat]=useState("");const[editCatIdx,setEditCatIdx]=useState(null);const[editCatVal,setEditCatVal]=useState("");
   const[showProdPicker,setShowProdPicker]=useState(false);const[prodPickerSearch,setProdPickerSearch]=useState("");const[prodPickerCat,setProdPickerCat]=useState("all");
   const[showMobileClientCard,setShowMobileClientCard]=useState(false);
@@ -211,9 +217,12 @@ function App(){
           const ordByConv={};
           if(ordersRaw&&ordersRaw.length>0){ordersRaw.forEach(o=>{const cid=o.conversation_id;if(!cid)return;if(!ordByConv[cid])ordByConv[cid]=[];ordByConv[cid].push({id:o.id,product:o.product_id?pMap[o.product_id]:{name:o.product_name||"",sku:"",img:""},product_id:o.product_id,product_name:o.product_name||"",size:o.size||"",total:o.total||o.price||0,paid:o.paid||0,status:o.status||"new",date:o.created_at?o.created_at.split("T")[0]:o.date||"",ttn:o.ttn||"",type:o.order_type||"order",npStatus:o.np_status||"",daysAtPost:o.days_at_post||0,repairNote:o.repair_note||"",repairPhotos:o.repair_photos||[],returnTtn:o.return_ttn||""});});}
           const mapped=convsRaw.map(c=>({
-            id:c.id,username:c.instagram_username||c.username||"",name:c.client_name||c.name||"",
+            id:c.id,username:c.instagram_username||c.telegram_username||c.username||"",name:c.client_name||c.name||"",
             funnel:c.funnel||"new",channel:c.channel||"instagram",
-            instagram_user_id:c.instagram_user_id||"",avatar:c.avatar_url||"",
+            platform:c.platform||"instagram",
+            instagram_user_id:c.instagram_user_id||"",
+            telegram_user_id:c.telegram_user_id||"",
+            avatar:c.avatar_url||"",
             lastMsg:c.last_message_text||c.lastMsg||"",
             lastTime:c.last_message_at?new Date(c.last_message_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):c.lastTime||"",
             lastTs:c.last_message_at?new Date(c.last_message_at).getTime():0,
@@ -244,6 +253,15 @@ function App(){
             setConvs(mapped);
           }
         }else if(cmts&&cmts.length>0)setComments(cmts);
+        /* Load payment settings */
+        const settings=await api("/api/settings");
+        if(settings){
+          if(settings.wayforpay){const v=settings.wayforpay;setWfpSettings({merchant_account:v.merchant_account||"",merchant_secret:v.merchant_secret||"",merchant_domain:v.merchant_domain||""});setWfpStatus(v.merchant_account?"connected":"disconnected");}else setWfpStatus("disconnected");
+          if(settings.monobank){const v=settings.monobank;setMonoSettings({api_token:v.api_token||"",webhook_url:v.webhook_url||"https://iseasy-crm-api.vercel.app/webhook/monobank"});setMonoStatus(v.api_token?"connected":"disconnected");}else setMonoStatus("disconnected");
+        }else{setWfpStatus("disconnected");setMonoStatus("disconnected");}
+        /* Load unmatched payments */
+        const uPays=await api("/api/payments/unmatched");
+        if(uPays&&Array.isArray(uPays))setUnmatchedPays(uPays);
       }catch(e){console.error("Failed to load data",e);}
       setLoading(false);
     })();
@@ -264,9 +282,10 @@ function App(){
         /* Skip heavy refresh if user is typing */
         const isTyping=document.activeElement&&(document.activeElement.tagName==="INPUT"||document.activeElement.tagName==="TEXTAREA");
         inputFocusedRef.current=isTyping;
-        const fetches=[api("/api/conversations"),api("/api/comments"),api("/api/orders?limit=200")];
+        const fetches=[api("/api/conversations"),api("/api/comments"),api("/api/orders?limit=200"),api("/api/payments/unmatched")];
         if(selId&&typeof selId==="number"&&!isTyping)fetches.push(api("/api/conversations/"+selId+"/messages"));
-        const[convsRaw,cmts,ordersRefresh,selMsgs]=await Promise.all(fetches);
+        const[convsRaw,cmts,ordersRefresh,uPays,selMsgs]=await Promise.all(fetches);
+        if(uPays&&Array.isArray(uPays))setUnmatchedPays(uPays);
 
         /* Update messages for selected conv — preserve scroll */
         if(selId&&selMsgs&&selMsgs.length>0){
@@ -282,9 +301,12 @@ function App(){
           const ordByConvR={};
           if(ordersRefresh&&ordersRefresh.length>0){ordersRefresh.forEach(o=>{const cid=o.conversation_id;if(!cid)return;if(!ordByConvR[cid])ordByConvR[cid]=[];ordByConvR[cid].push({id:o.id,product:o.product_id?pMap[o.product_id]:{name:o.product_name||"",sku:"",img:""},product_id:o.product_id,product_name:o.product_name||"",size:o.size||"",total:o.total||o.price||0,paid:o.paid||0,status:o.status||"new",date:o.created_at?o.created_at.split("T")[0]:o.date||"",ttn:o.ttn||"",type:o.order_type||"order",npStatus:o.np_status||"",daysAtPost:o.days_at_post||0,repairNote:o.repair_note||"",repairPhotos:o.repair_photos||[],returnTtn:o.return_ttn||""});});}
           const mapped=convsRaw.map(c=>({
-            id:c.id,username:c.instagram_username||c.username||"",name:c.client_name||c.name||"",
+            id:c.id,username:c.instagram_username||c.telegram_username||c.username||"",name:c.client_name||c.name||"",
             funnel:c.funnel||"new",channel:c.channel||"instagram",
-            instagram_user_id:c.instagram_user_id||"",avatar:c.avatar_url||"",
+            platform:c.platform||"instagram",
+            instagram_user_id:c.instagram_user_id||"",
+            telegram_user_id:c.telegram_user_id||"",
+            avatar:c.avatar_url||"",
             lastMsg:c.last_message_text||"",
             lastTime:c.last_message_at?new Date(c.last_message_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):"",
             lastTs:c.last_message_at?new Date(c.last_message_at).getTime():0,
@@ -736,7 +758,7 @@ const ProductsPage=()=>{
         <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Клієнт {conv.cd&&<span onClick={()=>setEditClient(conv.cd)} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>✎ Редагувати</span>}</div>
         <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>toggleClOpen()}><Av name={conv.name} size={50} check={!!conv.cd} src={conv.avatar}/><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div><span style={{fontSize:12,color:T.textSec,transition:"transform .2s",transform:clOpen?"rotate(180deg)":"rotate(0)"}}>{"\u25BC"}</span></div>
         {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13,display:"grid",gridTemplateColumns:"auto 1fr",gap:"6px 12px"}}>
-          {[["Тел",conv.cd.phone||"","phone"],["Місто",conv.cd.city||"","city"],["Відд.",conv.cd.branch?"№"+conv.cd.branch:"","branch"],["Інста","@"+(conv.username||"")]].map(([k,v,f],i)=>
+          {[["Тел",conv.cd.phone||"","phone"],["Місто",conv.cd.city||"","city"],["Відд.",conv.cd.branch?"№"+conv.cd.branch:"","branch"],[conv.platform==="telegram"?"TG":"Інста",(conv.platform==="telegram"?"@":"@")+(conv.username||"")]].map(([k,v,f],i)=>
             <React.Fragment key={i}><span style={{color:T.textSec,fontWeight:500}}>{k}</span>{f?<input value={(v||"").replace("№","")} onChange={e=>updateClient(f,e.target.value)} style={{border:"none",borderBottom:`1px solid ${T.border}`,fontSize:13,outline:"none",padding:"2px 0",background:"transparent"}}/>:<span>{v}</span>}</React.Fragment>)}
         </div>}
         {!conv.cd&&det&&<button onClick={()=>mkClient(det)} style={{width:"100%",marginTop:10,padding:"9px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:12}}>Створити клієнта</button>}
@@ -791,10 +813,31 @@ const ProductsPage=()=>{
           <div style={{display:"flex",justifyContent:"space-between"}}><span>Оплачено:</span><span style={{fontWeight:700}}>{curOrder.paid||0}/{curOrder.total} грн</span></div>
           <div style={{background:T.border,borderRadius:4,height:6,marginTop:6,overflow:"hidden"}}><div style={{background:curOrder.paid>=curOrder.total?T.accent:T.warn,height:"100%",width:Math.min(100,((curOrder.paid||0)/curOrder.total)*100)+"%",borderRadius:4,transition:"width .3s"}}/></div>
         </div>}
+        {/* Auto-matched from local IPAYS (legacy) */}
         {autoP&&curOrder&&curOrder.paid<curOrder.total&&<div style={{background:T.primaryLight,border:"1px solid #c7d2fe",borderRadius:12,padding:10,marginBottom:8}}>
           <div style={{fontSize:11,fontWeight:700,color:T.primary,marginBottom:4}}>Знайдено:</div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:12}}><span className="badge" style={{background:autoP.src==="mono"?"#1a1a1a":"#7e3af2",color:"#fff"}}>{autoP.src==="mono"?"MONO":"WFP"}</span> {autoP.name} — {autoP.amount}грн</span>
             <button onClick={()=>matchPay(autoP.id,curOrder.id)} style={{padding:"5px 12px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer",fontSize:11}}>✓</button></div></div>}
+        {/* Real unmatched payments from DB */}
+        {unmatchedPays.length>0&&curOrder&&curOrder.paid<curOrder.total&&<div>
+          <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:6}}>💰 Непідтверджені оплати:</div>
+          {unmatchedPays.map(p=><div key={p.id} style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:10,padding:8,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}>
+            <div style={{fontSize:12}}>
+              <span className="badge" style={{background:p.source==="monobank"?"#1a1a1a":"#7e3af2",color:"#fff",fontSize:10,padding:"2px 6px"}}>{p.source==="monobank"?"MONO":"WFP"}</span>
+              <span style={{marginLeft:6,fontWeight:600}}>{p.payer_name||"?"}</span>
+              <span style={{marginLeft:6,fontWeight:700,color:"#059669"}}>{p.amount}₴</span>
+              <div style={{fontSize:10,color:T.textSec,marginTop:2}}>{p.payment_date?new Date(p.payment_date).toLocaleString("uk",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</div>
+            </div>
+            <button onClick={async()=>{
+              const r=await api("/api/payments/"+p.id+"/match",{method:"POST",body:JSON.stringify({order_id:curOrder.id})});
+              if(r&&r.status==="ok"){
+                noti(r.fully_paid?"Оплату підтверджено повністю!":"Оплату додано!");
+                setUnmatchedPays(prev=>prev.filter(x=>x.id!==p.id));
+                updateOrder(curOrder.id,{paid:r.new_paid,status:r.fully_paid?"confirmed":curOrder.status});
+              }else noti("Помилка");
+            }} style={{padding:"5px 14px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer",fontSize:11}}>Підтвердити ✓</button>
+          </div>)}
+        </div>}
       </div>
       {/* NOVA POSHTA */}
       <div style={{padding:16,background:T.surface}}>
@@ -834,7 +877,7 @@ const ProductsPage=()=>{
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600,fontSize:13}}>{c.name}</span><span style={{fontSize:10,color:T.textSec}}>{c.lastTime}</span></div>
           <div style={{display:"flex",alignItems:"center",gap:4}}>
-            <span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:T.surfaceAlt,color:T.textSec}}>{CHANNELS.find(ch=>ch.id===c.channel)?.icon}</span>
+            <span style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:c.platform==="telegram"?"#e3f0ff":T.surfaceAlt,color:c.platform==="telegram"?"#2AABEE":T.textSec}}>{c.platform==="telegram"?"✈":"📷"}</span>
             <span style={{fontSize:12,color:T.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.lastMsg}</span>
           </div>
         </div>
@@ -853,7 +896,7 @@ const ProductsPage=()=>{
         {isMobile&&<span onClick={()=>{setSlideDir("left");setMobileView("list");}} style={{fontSize:22,cursor:"pointer",padding:"2px 6px",color:T.textSec}}>←</span>}
         <Av name={conv.name} size={36} check={!!conv.cd} src={conv.avatar} onClick={()=>{if(isMobile){savedScrollRef.current=chatBoxRef.current?chatBoxRef.current.scrollTop:null;setSlideDir("right");setMobileView("client");}else toggleClOpen();}}/>
         <div style={{flex:1,minWidth:0}} onClick={()=>{if(isMobile){savedScrollRef.current=chatBoxRef.current?chatBoxRef.current.scrollTop:null;setSlideDir("right");setMobileView("client");}}}>
-          <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default"}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div>
+          <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default",display:"flex",alignItems:"center",gap:6}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}{conv.platform==="telegram"&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:6,background:"#e3f0ff",color:"#2AABEE",fontWeight:600}}>TG</span>}</div>
         </div>
         {isMobile?<>
           <div onClick={()=>setFunnelOpen(!funnelOpen)} style={{padding:"7px 16px",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:"pointer",background:FNL.find(f=>f.id===conv.funnel)?.color||"#ccc",color:"#fff",minWidth:100,textAlign:"center",boxShadow:`0 2px 8px ${FNL.find(f=>f.id===conv.funnel)?.color||"#ccc"}40`}}>
@@ -988,18 +1031,108 @@ const ProductsPage=()=>{
             <div key={id} onClick={()=>setSettingsTab(id)} style={{padding:"8px 14px",borderRadius:T.btnRadius,fontSize:12,fontWeight:600,cursor:"pointer",background:settingsTab===id?T.primary:T.surfaceAlt,color:settingsTab===id?"#fff":T.text,border:`1px solid ${settingsTab===id?T.primary:T.border}`,transition:"all .15s"}}>{ic}</div>)}
         </div>}
         {settingsTab==="integrations"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>Інтеграції</h2>
-          {[["Instagram Direct","Meta Graph API","Підключено","#10b981"],["Нова Пошта","API v2.0","Очікує ключ","#f59e0b"],["WayForPay","Payment Gateway","Не підключено","#ef4444"],["Monobank","Open API","Не підключено","#ef4444"],["Supabase","Database","Підключено","#10b981"]].map(([n,d,s,clr],i)=>
-            <div key={i} className="card" style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",marginBottom:10,flexWrap:"wrap",gap:8}}>
+          {[["Instagram Direct","Meta Graph API","Підключено","#10b981"],["Нова Пошта","API v2.0","Очікує ключ","#f59e0b"],["WayForPay","Payment Gateway",wfpStatus==="connected"?"Підключено":"Не підключено",wfpStatus==="connected"?"#10b981":"#ef4444"],["Monobank","Open API",monoStatus==="connected"?"Підключено":"Не підключено",monoStatus==="connected"?"#10b981":"#ef4444"],["Supabase","Database","Підключено","#10b981"]].map(([n,d,s,clr],i)=>
+            <div key={i} className="card" style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 20px",marginBottom:10,flexWrap:"wrap",gap:8,cursor:n==="WayForPay"||n==="Monobank"?"pointer":"default"}} onClick={()=>{if(n==="WayForPay"||n==="Monobank")setSettingsTab("payments");}}>
               <div><div style={{fontWeight:700}}>{n}</div><div style={{fontSize:12,color:T.textSec}}>{d}</div></div>
               <Badge label={s} color={clr}/>
             </div>)}</div>}
         {settingsTab==="payments"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>Платіжні системи</h2>
-          {[{n:"WayForPay",f:["Merchant Account","Merchant Secret Key"]},{n:"Monobank",f:["API Token","Webhook URL"]},{n:"Приват24",f:["Merchant ID","Password"]}].map((ps,i)=>
-            <div key={i} className="card" style={{padding:20,marginBottom:14}}>
-              <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>{ps.n}</div>
-              {ps.f.map((f,j)=><div key={j} style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{f}</label><input placeholder={"Введіть "+f} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/></div>)}
-              <button style={{padding:"9px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>Зберегти</button>
-            </div>)}</div>}
+
+          {/* ── WayForPay ── */}
+          <div className="card" style={{padding:20,marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:16}}>💳 WayForPay</div>
+              <Badge label={wfpStatus==="connected"?"Підключено":wfpStatus==="loading"?"...":"Не підключено"} color={wfpStatus==="connected"?"#10b981":wfpStatus==="loading"?"#f59e0b":"#ef4444"}/>
+            </div>
+            {[["Merchant Account","merchant_account","Ваш merchantAccount"],["Merchant Secret Key","merchant_secret","Секретний ключ"],["Merchant Domain","merchant_domain","Домен магазину (напр. iseasy.com.ua)"]].map(([label,key,ph])=>
+              <div key={key} style={{marginBottom:10}}>
+                <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{label}</label>
+                <input value={wfpSettings[key]||""} onChange={e=>setWfpSettings(p=>({...p,[key]:e.target.value}))} placeholder={ph} type={key==="merchant_secret"?"password":"text"} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+              </div>)}
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Webhook URL (вставте в WayForPay)</label>
+              <div style={{display:"flex",gap:6}}>
+                <input readOnly value="https://iseasy-crm-api.vercel.app/webhook/wayforpay" style={{flex:1,padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:12,outline:"none",background:T.bg,color:T.textSec,fontFamily:"monospace"}}/>
+                <button onClick={()=>{navigator.clipboard.writeText("https://iseasy-crm-api.vercel.app/webhook/wayforpay");noti("Скопійовано!");}} style={{padding:"8px 14px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:12,cursor:"pointer"}}>📋</button>
+              </div>
+            </div>
+            <button disabled={wfpSaving} onClick={async()=>{
+              setWfpSaving(true);
+              const r=await api("/api/settings/wayforpay",{method:"PATCH",body:JSON.stringify(wfpSettings)});
+              setWfpSaving(false);
+              if(r){setWfpStatus(wfpSettings.merchant_account?"connected":"disconnected");noti("WayForPay збережено!");}else noti("Помилка збереження");
+            }} style={{padding:"9px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer",opacity:wfpSaving?.6:1}}>
+              {wfpSaving?"Зберігаю...":"Зберегти"}
+            </button>
+          </div>
+
+          {/* ── Monobank ── */}
+          <div className="card" style={{padding:20,marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:16}}>🏦 Monobank</div>
+              <Badge label={monoStatus==="connected"?"Підключено":monoStatus==="loading"?"...":"Не підключено"} color={monoStatus==="connected"?"#10b981":monoStatus==="loading"?"#f59e0b":"#ef4444"}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>API Token (з api.monobank.ua)</label>
+              <input value={monoSettings.api_token||""} onChange={e=>setMonoSettings(p=>({...p,api_token:e.target.value}))} placeholder="Ваш X-Token" type="password" style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Webhook URL (автоматично)</label>
+              <div style={{display:"flex",gap:6}}>
+                <input readOnly value={monoSettings.webhook_url} style={{flex:1,padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:12,outline:"none",background:T.bg,color:T.textSec,fontFamily:"monospace"}}/>
+                <button onClick={()=>{navigator.clipboard.writeText(monoSettings.webhook_url);noti("Скопійовано!");}} style={{padding:"8px 14px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:12,cursor:"pointer"}}>📋</button>
+              </div>
+            </div>
+            {monoInfo&&<div style={{padding:10,background:"#f0fdf4",borderRadius:10,marginBottom:10,fontSize:12,color:"#166534"}}>
+              Підключено: {monoInfo.client_name} ({monoInfo.accounts} UAH рахунків)
+            </div>}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button disabled={monoSaving} onClick={async()=>{
+                if(!monoSettings.api_token){noti("Введіть API Token");return;}
+                setMonoSaving(true);
+                /* Save settings */
+                await api("/api/settings/monobank",{method:"PATCH",body:JSON.stringify(monoSettings)});
+                /* Register webhook in Monobank */
+                const r=await api("/api/monobank/setup-webhook",{method:"POST",body:JSON.stringify({token:monoSettings.api_token,webhook_url:monoSettings.webhook_url})});
+                setMonoSaving(false);
+                if(r&&r.status==="ok"){setMonoStatus("connected");setMonoInfo(r);noti("Monobank підключено!");}
+                else{setMonoStatus("disconnected");noti(r?.error||"Помилка підключення");}
+              }} style={{padding:"9px 18px",background:"#10b981",color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer",opacity:monoSaving?.6:1}}>
+                {monoSaving?"Підключаю...":"Підключити та зберегти"}
+              </button>
+              <button disabled={monoSaving} onClick={async()=>{
+                setMonoSaving(true);
+                await api("/api/settings/monobank",{method:"PATCH",body:JSON.stringify(monoSettings)});
+                setMonoSaving(false);
+                setMonoStatus(monoSettings.api_token?"connected":"disconnected");
+                noti("Збережено (без реєстрації вебхуку)");
+              }} style={{padding:"9px 18px",background:T.surfaceAlt,color:T.text,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                Тільки зберегти
+              </button>
+            </div>
+          </div>
+
+          {/* ── Unmatched Payments ── */}
+          {unmatchedPays.length>0&&<div className="card" style={{padding:20,marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:14,color:"#f59e0b"}}>⚠️ Непідтверджені оплати ({unmatchedPays.length})</div>
+            {unmatchedPays.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${T.border}`,flexWrap:"wrap",gap:6}}>
+              <div>
+                <span style={{fontWeight:600}}>{p.payer_name||"Невідомо"}</span>
+                <span style={{color:T.textSec,fontSize:12,marginLeft:8}}>{p.source==="wayforpay"?"💳 WFP":"🏦 Mono"}</span>
+                <div style={{fontSize:12,color:T.textSec}}>{p.payment_date?new Date(p.payment_date).toLocaleString("uk",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</div>
+              </div>
+              <div style={{fontWeight:700,fontSize:16,color:"#10b981"}}>{p.amount} ₴</div>
+            </div>)}
+          </div>}
+
+          <div style={{padding:14,background:T.surfaceAlt,borderRadius:T.cardRadius,fontSize:12,color:T.textSec,lineHeight:1.6}}>
+            <strong>Як це працює:</strong><br/>
+            1. Клієнт оплачує → WayForPay/Monobank надсилає вебхук на наш сервер<br/>
+            2. Система зберігає платіж і шукає відповідне замовлення по прізвищу<br/>
+            3. Якщо знайдено — автоматично підтверджує оплату<br/>
+            4. Якщо не знайдено — показує в списку для ручного підтвердження
+          </div>
+        </div>}
         {settingsTab==="automations"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>🤖 Автоматизація</h2>
           <div style={{display:"flex",gap:10,marginBottom:24,flexDirection:isMobile?"column":"row"}}>
             <textarea value={autoInput} onChange={e=>setAutoInput(e.target.value)} placeholder='Опишіть сценарій...' style={{flex:1,padding:"12px 16px",border:`1px solid ${T.border}`,borderRadius:T.cardRadius,fontSize:13,outline:"none",resize:"none",minHeight:60,background:T.surfaceAlt}}/>
