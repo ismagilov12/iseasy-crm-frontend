@@ -156,7 +156,7 @@ function App(){
   const sosEnd=useRef(null);const ce=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
-  useEffect(()=>{ce.current?.scrollIntoView({behavior:"smooth"});},[selId,conv?.msgs?.length]);
+  useEffect(()=>{const t=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),150);return()=>clearTimeout(t);},[selId,conv?.msgs?.length]);
   useEffect(()=>{setTimeout(()=>sosEnd.current?.scrollIntoView({behavior:"smooth"}),60);},[sosM.length]);
   const noti=useCallback(m=>{setNotif(m);setTimeout(()=>setNotif(null),2500);},[]);
 
