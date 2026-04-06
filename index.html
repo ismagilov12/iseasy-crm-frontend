@@ -125,6 +125,7 @@ function CancelRing({onExpire,onCancel}){const[alive,setAlive]=useState(true);us
 function Badge({label,color}){return <span className="badge" style={{background:color+"18",color}}>{label}</span>;}
 
 /* ═══ MAIN APP ═══ */
+class ErrorBoundary extends React.Component{constructor(p){super(p);this.state={err:false};}static getDerivedStateFromError(){return{err:true};}componentDidCatch(e){console.error("CRM Error:",e);}render(){if(this.state.err)return React.createElement("div",{style:{padding:40,textAlign:"center"}},React.createElement("h2",null,"Помилка CRM"),React.createElement("button",{onClick:()=>{this.setState({err:false});},style:{marginTop:16,padding:"10px 24px",background:"#4f46e5",color:"#fff",border:"none",borderRadius:12,cursor:"pointer",fontSize:14}},"Перезавантажити"));return this.props.children;}}
 function App(){
   const isMobile=useIsMobile();
   const[convs,setConvs]=useState(IC);const[selId,setSelId]=useState(null);const[filter,setFilter]=useState("all");const[search,setSearch]=useState("");const[channel,setChannel]=useState("all");
@@ -153,10 +154,11 @@ function App(){
   const[attachImg,setAttachImg]=useState(null);const fileInputRef=useRef(null);
   const[mediaCache,setMediaCache]=useState({});
 
-  const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const scrollToBottom=()=>{if(chatBoxRef.current){chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
+  const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const scrollToBottom=()=>{if(chatBoxRef.current){chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
+  const isEmptyCD=(cd)=>!cd||typeof cd!=="object"||(Object.keys(cd).length===0)||(!cd.surname&&!cd.name&&!cd.phone&&!cd.city&&!cd.branch);
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
-  useEffect(()=>{scrollToBottom();const t1=setTimeout(scrollToBottom,100);const t2=setTimeout(scrollToBottom,400);const t3=setTimeout(scrollToBottom,1000);const t4=setTimeout(scrollToBottom,2000);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4);};},[selId,conv?.msgs?.length]);
+  useEffect(()=>{const curLen=conv?.msgs?.length||0;const changed=selId!==prevSelId.current||curLen!==prevMsgLen.current;if(!changed)return;prevSelId.current=selId;prevMsgLen.current=curLen;scrollToBottom();const t1=setTimeout(scrollToBottom,150);const t2=setTimeout(scrollToBottom,500);const t3=setTimeout(scrollToBottom,1200);const t4=setTimeout(scrollToBottom,2500);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4);};},[selId,conv?.msgs?.length]);
   useEffect(()=>{setTimeout(()=>sosEnd.current?.scrollIntoView({behavior:"smooth"}),60);},[sosM.length]);
   const noti=useCallback(m=>{setNotif(m);setTimeout(()=>setNotif(null),2500);},[]);
 
@@ -216,12 +218,15 @@ function App(){
   },[mediaCache]);
 
   /* ── Auto-refresh conversations every 10s ── */
+  const inputFocusedRef=useRef(false);
   useEffect(()=>{
     const interval=setInterval(async()=>{
       try{
+        /* Skip heavy refresh if user is typing */
+        const isTyping=document.activeElement&&(document.activeElement.tagName==="INPUT"||document.activeElement.tagName==="TEXTAREA");
+        inputFocusedRef.current=isTyping;
         const fetches=[api("/api/conversations"),api("/api/comments")];
-        /* Also reload messages for selected conversation */
-        if(selId&&typeof selId==="number")fetches.push(api("/api/conversations/"+selId+"/messages"));
+        if(selId&&typeof selId==="number"&&!isTyping)fetches.push(api("/api/conversations/"+selId+"/messages"));
         const[convsRaw,cmts,selMsgs]=await Promise.all(fetches);
 
         /* Update messages for selected conv */
@@ -243,6 +248,12 @@ function App(){
             msgs:[],cd:c.cd||c.client_data||null,
             orders:(c.orders||[]).map(o=>({...o,product:o.product_id?pMap[o.product_id]:o.product}))
           }));
+          const mergeConv=(nc,old)=>{
+            const mergedOrders=old&&old.orders&&old.orders.length>0?old.orders:nc.orders;
+            const mergedCD=old&&!isEmptyCD(old.cd)?old.cd:nc.cd;
+            const mergedFunnel=old&&old.funnel!=="new"?old.funnel:nc.funnel;
+            return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread,orders:mergedOrders,cd:mergedCD,funnel:mergedFunnel};
+          };
           /* Merge comments */
           if(cmts&&cmts.length>0){
             setComments(cmts);
@@ -257,12 +268,14 @@ function App(){
               if(ts>cv.lastTs){cv.lastTs=ts;cv.lastTime=cmtTime.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"});cv.lastMsg="📸 "+cm.text.substring(0,40);cv.lastDir="in";}
             });
             const allConvs=[...mapped,...virtuals].sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
-            setConvs(prev=>allConvs.map(nc=>{const old=prev.find(p=>p.id===nc.id);return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread};}));
+            setConvs(prev=>allConvs.map(nc=>{const old=prev.find(p=>p.id===nc.id);return mergeConv(nc,old);}));
           }else{
             mapped.sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
-            setConvs(prev=>mapped.map(nc=>{const old=prev.find(p=>p.id===nc.id);return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread};}));
+            setConvs(prev=>mapped.map(nc=>{const old=prev.find(p=>p.id===nc.id);return mergeConv(nc,old);}));
           }
         }
+        /* Restore focus if was typing */
+        if(inputFocusedRef.current&&msgInputRef.current){requestAnimationFrame(()=>{if(msgInputRef.current)msgInputRef.current.focus();});}
       }catch(e){console.error("Auto-refresh error",e);}
     },10000);
     return()=>clearInterval(interval);
@@ -288,15 +301,16 @@ function App(){
     api("/api/conversations/"+selId,{method:"PATCH",body:JSON.stringify({funnel:f})});};
   const cancelFunnelChange=()=>{if(funnelPending){setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:funnelPending.oldFunnel}:c));setFunnelPending(null);noti("Скасовано");}};
   const confirmFunnelChange=()=>{setFunnelPending(null);noti("Статус змінено!");};
-  const addOrder=(pr,sz)=>{const o={id:Date.now(),product:pr,size:sz,total:pr.price,paid:0,status:"new",date:new Date().toISOString().split("T")[0],ttn:"",type:"order",npStatus:"",daysAtPost:0,repairNote:"",repairPhotos:[],returnTtn:""};
-    const prodText=pr.name+"\nАрт: "+pr.sku+"\nРозмір: "+sz+"\nЦіна: "+pr.price+" грн";const now=Date.now();
+  const addOrder=(pr,sz)=>{try{const o={id:Date.now(),product:pr,size:sz,total:pr.price||0,paid:0,status:"new",date:new Date().toISOString().split("T")[0],ttn:"",type:"order",npStatus:"",daysAtPost:0,repairNote:"",repairPhotos:[],returnTtn:""};
+    const prodText=(pr.name||"Товар")+"\nАрт: "+(pr.sku||"-")+"\nРозмір: "+sz+"\nЦіна: "+(pr.price||0)+" грн";const now=Date.now();
     setConvs(p=>p.map(c=>c.id===selId?{...c,orders:[...(c.orders||[]),o],funnel:c.funnel==="new"?"processing":c.funnel,
-      msgs:[...c.msgs,{id:now,dir:"out",text:prodText,time:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),ts:now,mediaUrl:pr.img||"",msgType:pr.img?"image":"text",isProduct:true}],
-      lastMsg:pr.name+" | "+pr.price+" грн",lastTime:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),lastTs:now,lastDir:"out",unread:0}:c).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0)));
+      msgs:[...(c.msgs||[]),{id:now,dir:"out",text:prodText,time:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),ts:now,mediaUrl:pr.img||"",msgType:pr.img?"image":"text",isProduct:true}],
+      lastMsg:(pr.name||"Товар")+" | "+(pr.price||0)+" грн",lastTime:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),lastTs:now,lastDir:"out",unread:0}:c).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0)));
     setProdModal(null);setSelSize(null);setInput("");
     /* Send to Instagram: image + text + confirm button */
     api("/api/conversations/"+selId+"/messages",{method:"POST",body:JSON.stringify({text:prodText,image_url:pr.img||"",quick_replies:[{title:"✅ Підтвердити",payload:"CONFIRM_ORDER"}]})});
-    api("/api/orders",{method:"POST",body:JSON.stringify({conversation_id:selId,product_id:pr.id,size:sz,total:pr.price,paid:0,status:"new",type:"order"})});};
+    api("/api/orders",{method:"POST",body:JSON.stringify({conversation_id:selId,product_id:pr.id,size:sz,total:pr.price||0,paid:0,status:"new",type:"order"})});
+    noti("Товар додано в замовлення!");}catch(e){console.error("addOrder error",e);noti("Помилка додавання товару");}};
   const removeOrder=(oid)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).filter(o=>o.id!==oid)}:c));noti("Замовлення видалено");};
   const updateOrder=(oid,upd)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).map(o=>o.id===oid?{...o,...upd}:o)}:c));
     api("/api/orders/"+oid,{method:"PATCH",body:JSON.stringify(upd)});};
@@ -355,7 +369,7 @@ function App(){
       else r="Команди: знайди, статистика, як відповісти";
       setSosM(p=>[...p,{id:Date.now()+1,role:"ai",text:r}]);setSosTyp(false);},600);};
 
-  let det=null;if(conv&&!conv.cd){for(let i=conv.msgs.length-1;i>=0;i--){if(conv.msgs[i].dir==="in"){det=parseCD(conv.msgs[i].text);if(det)break;}}}
+  let det=null;if(conv&&isEmptyCD(conv.cd)){for(let i=(conv.msgs||[]).length-1;i>=0;i--){if(conv.msgs[i].dir==="in"){det=parseCD(conv.msgs[i].text);if(det)break;}}}
   const curOrder=(conv?.orders||[])[0];
   const autoP=conv?.cd&&curOrder?pays.find(p=>!matched.has(p.id)&&fuzzy(p.name.split(" ")[0],conv.cd.surname)):null;
   const unmatched=pays.filter(p=>!matched.has(p.id));
@@ -365,7 +379,7 @@ function App(){
       const mapped=msgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
       setConvs(p=>p.map(x=>{if(x.id!==id)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mapped,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));
         /* Auto-extract client data if no cd yet */
-        if(!x.cd){for(let i=all.length-1;i>=0;i--){if(all[i].dir==="in"&&!all[i].type){const d=parseCD(all[i].text);if(d&&(d.surname||d.phone)){api("/api/clients",{method:"POST",body:JSON.stringify({...d,conversation_id:id})});return{...x,msgs:all,_loaded:true,cd:d,funnel:x.funnel==="new"?"processing":x.funnel};}}}}
+        if(isEmptyCD(x.cd)){for(let i=all.length-1;i>=0;i--){if(all[i].dir==="in"&&!all[i].type){const d=parseCD(all[i].text);if(d&&(d.surname||d.phone)){api("/api/clients",{method:"POST",body:JSON.stringify({...d,conversation_id:id})});return{...x,msgs:all,_loaded:true,cd:d,funnel:x.funnel==="new"?"processing":x.funnel};}}}}
         return{...x,msgs:all,_loaded:true};}));}});
   };
   const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(false);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile)setMobileView("chat");
@@ -801,14 +815,18 @@ const ProductsPage=()=>{
                 <audio src={msg.mediaUrl} controls style={{width:"100%",height:36}}/>
               </div>
             :
-              <div style={{maxWidth:isMobile?280:420,padding:"10px 14px",borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:msg.dir==="out"?T.bubbleOut:T.surface,color:msg.dir==="out"?"#fff":T.text,fontSize:14,lineHeight:1.45,wordBreak:"break-word",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow}}>{msg.text.split("\n").map((l,j)=><div key={j}>{l}</div>)}</div>
+              <div style={{maxWidth:isMobile?280:420,padding:"10px 14px",borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:msg.dir==="out"?T.bubbleOut:T.surface,color:msg.dir==="out"?"#fff":T.text,fontSize:14,lineHeight:1.45,wordBreak:"break-word",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow}}>{(msg.text||"").split("\n").map((l,j)=><div key={j}>{l}</div>)}</div>
             }
             <div style={{fontSize:10,color:T.textMuted,marginTop:2,textAlign:msg.dir==="out"?"right":"left",display:"flex",alignItems:"center",gap:4,justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}>
               {msg.time}
               {msg.parsed&&<span title="Дані витягнуто" style={{color:T.accent,fontSize:14}}>✅</span>}
             </div>
           </div></div>}
-          {msg.dir==="in"&&!msg.type&&!conv.cd&&(()=>{const d=parseCD(msg.text);if(!d)return null;return <div style={{background:T.warnLight,border:"1px solid #fcd34d",borderRadius:14,padding:"12px 14px",margin:"6px 0",maxWidth:isMobile?300:420}}>
+          {/* Show confirm button indicator under product messages */}
+          {msg.isProduct&&msg.dir==="out"&&<div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}><div style={{background:"#ecfdf5",border:"1px solid #6ee7b7",borderRadius:12,padding:"6px 14px",fontSize:12,color:"#065f46",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>✅ Підтвердити <span style={{fontSize:10,color:"#059669"}}>(кнопка в Інстаграмі)</span></div></div>}
+          {/* Show confirm response as green badge */}
+          {msg.dir==="in"&&(msg.text||"").includes("Підтвердити")&&<div style={{display:"flex",justifyContent:"flex-start",marginTop:4}}><div style={{background:"#d1fae5",border:"1px solid #34d399",borderRadius:12,padding:"8px 16px",fontSize:13,color:"#065f46",fontWeight:700}}>✅ Клієнт підтвердив замовлення!</div></div>}
+          {msg.dir==="in"&&!msg.type&&isEmptyCD(conv.cd)&&(()=>{const d=parseCD(msg.text);if(!d)return null;return <div style={{background:T.warnLight,border:"1px solid #fcd34d",borderRadius:14,padding:"12px 14px",margin:"6px 0",maxWidth:isMobile?300:420}}>
             <div style={{fontWeight:700,fontSize:12,color:"#92400e",marginBottom:6}}>Розпізнано дані:</div>
             {d.surname&&<div style={{fontSize:13}}><b style={{color:"#92400e"}}>{d.surname}</b> {d.name}</div>}
             <div style={{fontSize:12,color:"#555"}}>{[d.city,d.branch&&"відд.№"+d.branch,d.phone].filter(Boolean).join(" · ")}</div>
@@ -829,7 +847,7 @@ const ProductsPage=()=>{
             <div key={i} onClick={fn} style={{padding:"5px 12px",border:`1px solid ${a?T.primary:T.border}`,borderRadius:20,fontSize:12,cursor:"pointer",background:a?T.primary:T.surface,color:a?"#fff":T.textSec,display:"flex",alignItems:"center",gap:4,fontWeight:500,transition:"all .15s"}}>{ic} {lb}</div>)}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-          <input type="text" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(attachImg){sendWithPhoto(input);}else{send(input);}}}} placeholder="Написати..." style={{flex:1,padding:"10px 16px",border:`1px solid ${T.border}`,borderRadius:22,fontSize:14,outline:"none",lineHeight:1.4,background:T.surfaceAlt}}/>
+          <input ref={msgInputRef} type="text" inputMode="text" autoComplete="off" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(attachImg){sendWithPhoto(input);}else{send(input);}}}} placeholder="Написати..." style={{flex:1,padding:"10px 16px",border:`1px solid ${T.border}`,borderRadius:22,fontSize:16,outline:"none",lineHeight:1.4,background:T.surfaceAlt}}/>
           <button onClick={()=>{if(attachImg){sendWithPhoto(input);}else{send(input);}}} style={{width:40,height:40,borderRadius:"50%",background:T.primary,color:"#fff",border:"none",cursor:"pointer",fontSize:16,flexShrink:0,boxShadow:`0 2px 8px ${T.primary}40`}}>➤</button>
         </div>
       </div>
@@ -1008,7 +1026,7 @@ const ProductsPage=()=>{
     </div>}
   </div>;
 }
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 </script>
 </body>
 </html>
