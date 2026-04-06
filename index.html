@@ -215,11 +215,21 @@ function App(){
     api("/api/media/"+mediaId).then(data=>{if(data&&data.media_url)setMediaCache(p=>({...p,[mediaId]:data}));else setMediaCache(p=>({...p,[mediaId]:{id:mediaId,media_url:"",media_type:"",error:true}}));}).catch(()=>setMediaCache(p=>({...p,[mediaId]:{error:true}})));
   },[mediaCache]);
 
-  /* ── Auto-refresh conversations every 15s ── */
+  /* ── Auto-refresh conversations every 10s ── */
   useEffect(()=>{
     const interval=setInterval(async()=>{
       try{
-        const[convsRaw,cmts]=await Promise.all([api("/api/conversations"),api("/api/comments")]);
+        const fetches=[api("/api/conversations"),api("/api/comments")];
+        /* Also reload messages for selected conversation */
+        if(selId&&typeof selId==="number")fetches.push(api("/api/conversations/"+selId+"/messages"));
+        const[convsRaw,cmts,selMsgs]=await Promise.all(fetches);
+
+        /* Update messages for selected conv */
+        if(selId&&selMsgs&&selMsgs.length>0){
+          const mappedMsgs=selMsgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
+          setConvs(prev=>prev.map(x=>{if(x.id!==selId)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mappedMsgs,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));return{...x,msgs:all,_loaded:true};}));
+        }
+
         if(convsRaw&&convsRaw.length>0){
           const pMap={};products.forEach(p=>{pMap[p.id]=p;});
           const mapped=convsRaw.map(c=>({
@@ -247,27 +257,18 @@ function App(){
               if(ts>cv.lastTs){cv.lastTs=ts;cv.lastTime=cmtTime.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"});cv.lastMsg="📸 "+cm.text.substring(0,40);cv.lastDir="in";}
             });
             const allConvs=[...mapped,...virtuals].sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
-            /* Preserve loaded msgs and selection state */
-            setConvs(prev=>{
-              return allConvs.map(nc=>{
-                const old=prev.find(p=>p.id===nc.id);
-                if(old&&old.msgs&&old.msgs.length>0){
-                  return{...nc,msgs:old.msgs,unread:nc.id===selId?0:nc.unread};
-                }
-                return{...nc,unread:nc.id===selId?0:nc.unread};
-              });
-            });
+            setConvs(prev=>allConvs.map(nc=>{const old=prev.find(p=>p.id===nc.id);return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread};}));
           }else{
             mapped.sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
-            setConvs(prev=>mapped.map(nc=>{const old=prev.find(p=>p.id===nc.id);if(old&&old.msgs&&old.msgs.length>0)return{...nc,msgs:old.msgs,unread:nc.id===selId?0:nc.unread};return{...nc,unread:nc.id===selId?0:nc.unread};}));
+            setConvs(prev=>mapped.map(nc=>{const old=prev.find(p=>p.id===nc.id);return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread};}));
           }
         }
       }catch(e){console.error("Auto-refresh error",e);}
-    },15000);
+    },10000);
     return()=>clearInterval(interval);
   },[products,selId]);
 
-  const allOrders=convs.filter(c=>c.orders).flatMap(c=>c.orders.map(o=>({...o,client:c.cd?c.cd.surname+" "+c.cd.name:c.name,clientId:c.id,username:c.username})));
+  const allOrders=convs.filter(c=>c.orders).flatMap(c=>c.orders.map(o=>({...o,client:c.cd&&(c.cd.surname||c.cd.name)?(c.cd.surname||"")+" "+(c.cd.name||""):c.name||c.username||"?",clientId:c.id,username:c.username})));
 
   const send=text=>{if(!text.trim()||!conv)return;const t=text.trim();const now=Date.now();setConvs(p=>p.map(c=>c.id===selId?{...c,msgs:[...c.msgs,{id:now,dir:"out",text:t,time:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}],lastMsg:t,lastTime:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),lastTs:now,lastDir:"out",unread:0}:c).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0)));setInput("");setShowQR(false);setShowProds(false);
     api("/api/conversations/"+selId+"/messages",{method:"POST",body:JSON.stringify({text:t})});};
@@ -352,14 +353,15 @@ function App(){
   const curOrder=(conv?.orders||[])[0];
   const autoP=conv?.cd&&curOrder?pays.find(p=>!matched.has(p.id)&&fuzzy(p.name.split(" ")[0],conv.cd.surname)):null;
   const unmatched=pays.filter(p=>!matched.has(p.id));
+  const loadMsgs=(id)=>{
+    if(typeof id==="string"&&id.startsWith("cmt_"))return;/* virtual comment-only conv */
+    api("/api/conversations/"+id+"/messages").then(msgs=>{if(msgs&&msgs.length>0){
+      const mapped=msgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
+      setConvs(p=>p.map(x=>{if(x.id!==id)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mapped,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));return{...x,msgs:all,_loaded:true};}));}});
+  };
   const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(true);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile)setMobileView("chat");
     api("/api/conversations/"+id+"/read",{method:"POST"});
-    // load messages from API if not already loaded
-    const c=convs.find(x=>x.id===id);if(c&&(!c.msgs||c.msgs.length===0)){
-      api("/api/conversations/"+id+"/messages").then(msgs=>{if(msgs&&msgs.length>0){
-        const mapped=msgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
-        /* Keep existing comment-type messages, prepend API messages */
-        setConvs(p=>p.map(x=>{if(x.id!==id)return x;const cmtMsgs=x.msgs.filter(m=>m.type==="comment");return{...x,msgs:[...mapped,...cmtMsgs]};}));}});}
+    loadMsgs(id);
   };
 
   const handleTouchStart=(e)=>{touchStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};
@@ -599,7 +601,7 @@ const ProductsPage=()=>{
         <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Клієнт {conv.cd&&<span onClick={()=>setEditClient(conv.cd)} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>✎ Редагувати</span>}</div>
         <div style={{display:"flex",alignItems:"center",gap:12}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div><div style={{fontSize:15,fontWeight:700}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div></div>
         {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13,display:"grid",gridTemplateColumns:"auto 1fr",gap:"6px 12px"}}>
-          {[["Тел",conv.cd.phone,"phone"],["Місто",conv.cd.city,"city"],["Відд.","№"+conv.cd.branch,"branch"],["Інста","@"+conv.username]].map(([k,v,f],i)=>
+          {[["Тел",conv.cd.phone||"","phone"],["Місто",conv.cd.city||"","city"],["Відд.",conv.cd.branch?"№"+conv.cd.branch:"","branch"],["Інста","@"+(conv.username||"")]].map(([k,v,f],i)=>
             <React.Fragment key={i}><span style={{color:T.textSec,fontWeight:500}}>{k}</span>{f?<input value={(v||"").replace("№","")} onChange={e=>updateClient(f,e.target.value)} style={{border:"none",borderBottom:`1px solid ${T.border}`,fontSize:13,outline:"none",padding:"2px 0",background:"transparent"}}/>:<span>{v}</span>}</React.Fragment>)}
         </div>}
         {!conv.cd&&det&&<button onClick={()=>mkClient(det)} style={{width:"100%",marginTop:10,padding:"9px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:12}}>Створити клієнта</button>}
@@ -659,7 +661,7 @@ const ProductsPage=()=>{
       <div style={{padding:16,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:"#dc2626",textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>📦 Нова Пошта <span onClick={()=>setPage("settings")} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>⚙️</span></div>
         <div style={{background:T.dangerLight,borderRadius:12,padding:12,border:"1px solid #fecaca"}}>
-          {[["Відправник",npSettings.senderName+" | "+npSettings.senderCity+" відд.№"+npSettings.senderBranch],["Отримувач",conv.cd?conv.cd.surname+" "+conv.cd.name:"—"],["Тел",conv.cd?.phone||"—"],["Місто",conv.cd?.city||"—"],["Відд.",conv.cd?.branch?"№"+conv.cd.branch:"—"],["Контроль",curOrder?(curOrder.paid>=curOrder.total?"Передплата":(curOrder.total-(curOrder.paid||0))+" грн наклад."):"—"]].map(([k,v],i)=>
+          {[["Відправник",npSettings.senderName+" | "+npSettings.senderCity+" відд.№"+npSettings.senderBranch],["Отримувач",conv.cd?(conv.cd.surname||"")+" "+(conv.cd.name||""):"—"],["Тел",conv.cd?.phone||"—"],["Місто",conv.cd?.city||"—"],["Відд.",conv.cd?.branch?"№"+conv.cd.branch:"—"],["Контроль",curOrder?(curOrder.paid>=curOrder.total?"Передплата":(curOrder.total-(curOrder.paid||0))+" грн наклад."):"—"]].map(([k,v],i)=>
             <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}><span style={{color:"#991b1b",fontWeight:500}}>{k}:</span><span style={{fontWeight:500,textAlign:"right",maxWidth:"60%"}}>{v}</span></div>)}
           {curOrder?.npStatus&&<div style={{marginTop:8,padding:"6px 10px",borderRadius:8,fontSize:12,fontWeight:600,textAlign:"center",background:NP_STATUSES[curOrder.npStatus]?.color+"18",color:NP_STATUSES[curOrder.npStatus]?.color}}>{NP_STATUSES[curOrder.npStatus]?.label} {curOrder.ttn&&"| ТТН: "+curOrder.ttn} {curOrder.daysAtPost>0&&" | "+curOrder.daysAtPost+" дн."}</div>}
         </div>
