@@ -161,7 +161,8 @@ function App(){
   const[npSettings,setNpSettings]=useState({senderBranch:"15",senderCity:"Київ",senderPhone:"0501234567",senderName:"IS EASY",controlPay:true,cashOnDelivery:true});
   const[recording,setRecording]=useState(false);
   const[wfpSettings,setWfpSettings]=useState({merchant_account:"",merchant_secret:"",merchant_domain:""});
-  const[monoSettings,setMonoSettings]=useState({api_token:"",webhook_url:"https://iseasy-crm-api.vercel.app/webhook/monobank"});
+  const[monoSettings,setMonoSettings]=useState({api_token:"",webhook_url:"https://iseasy-crm-api.vercel.app/webhook/monobank",selected_accounts:[]});
+  const[monoAccounts,setMonoAccounts]=useState([]);
   const[wfpStatus,setWfpStatus]=useState("loading");const[monoStatus,setMonoStatus]=useState("loading");
   const[wfpSaving,setWfpSaving]=useState(false);const[monoSaving,setMonoSaving]=useState(false);
   const[monoInfo,setMonoInfo]=useState(null);
@@ -257,7 +258,7 @@ function App(){
         const settings=await api("/api/settings");
         if(settings){
           if(settings.wayforpay){const v=settings.wayforpay;setWfpSettings({merchant_account:v.merchant_account||"",merchant_secret:v.merchant_secret||"",merchant_domain:v.merchant_domain||""});setWfpStatus(v.merchant_account?"connected":"disconnected");}else setWfpStatus("disconnected");
-          if(settings.monobank){const v=settings.monobank;setMonoSettings({api_token:v.api_token||"",webhook_url:v.webhook_url||"https://iseasy-crm-api.vercel.app/webhook/monobank"});setMonoStatus(v.api_token?"connected":"disconnected");}else setMonoStatus("disconnected");
+          if(settings.monobank){const v=settings.monobank;setMonoSettings({api_token:v.api_token||"",webhook_url:v.webhook_url||"https://iseasy-crm-api.vercel.app/webhook/monobank",selected_accounts:v.selected_accounts||[]});setMonoStatus(v.api_token?"connected":"disconnected");}else setMonoStatus("disconnected");
         }else{setWfpStatus("disconnected");setMonoStatus("disconnected");}
         /* Load unmatched payments */
         const uPays=await api("/api/payments/unmatched");
@@ -603,7 +604,7 @@ function App(){
 
   /* ═══ PAYMENT PICKER COMPONENT ═══ */
   const PaymentPicker=({conv,curOrder,onMatch,noti})=>{
-    const[pays,setPays]=useState([]);const[loading,setLoading]=useState(true);const[sel,setSel]=useState(null);
+    const[pays,setPays]=useState([]);const[loading,setLoading]=useState(true);const[sel,setSel]=useState(null);const[search,setSearch]=useState("");
     useEffect(()=>{
       (async()=>{
         const surname=(conv.cd?.surname||conv.name||"").trim();
@@ -613,41 +614,38 @@ function App(){
       })();
     },[conv.id]);
     const suggested=pays.filter(p=>p.match_score>=0.65);
-    const rest=pays.filter(p=>p.match_score<0.65);
-    const fmtDate=d=>{if(!d)return"";try{const dt=new Date(d);return dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit",year:"2-digit"})+" "+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}catch(e){return d.split("T")[0]||""}};
+    const filtered=search?pays.filter(p=>(p.payer_name||"").toLowerCase().includes(search.toLowerCase())||String(p.amount).includes(search)):pays;
+    const rest=filtered.filter(p=>p.match_score<0.65);
+    const fmtDate=d=>{if(!d)return"";try{const dt=new Date(d);return dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit"})+" "+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}catch(e){return d.split("T")[0]||""}};
     const srcBadge=s=>s==="monobank"?{bg:"#e0f2fe",color:"#0369a1",label:"🏦 Mono"}:{bg:"#fef3c7",color:"#92400e",label:"💳 WFP"};
-    return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`,maxHeight:280,overflowY:"auto"}}>
-      {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
-        {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає незіставлених оплат</div>}
-        {suggested.length>0&&<div style={{marginBottom:6}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>✨ Рекомендовані збіги:</div>
-          {suggested.map(p=>{const b=srcBadge(p.source);return <div key={p.id} onClick={()=>setSel(sel===p.id?null:p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:sel===p.id?T.accentLight:T.surface,border:`1px solid ${sel===p.id?T.accent:T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10,padding:"1px 6px",background:b.bg,color:b.color,borderRadius:6,fontWeight:600}}>{b.label}</span>
-                <span style={{fontWeight:600,fontSize:12}}>{p.payer_name||"—"}</span>
-                <span style={{fontSize:10,color:T.accent,fontWeight:700}}>{Math.round(p.match_score*100)}%</span>
-              </div>
-              <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
-            </div>
-            {sel===p.id&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder.id)}} style={{padding:"5px 12px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Підтвердити</button>}
-          </div>})}
-        </div>}
-        {rest.length>0&&<div>
-          <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{suggested.length>0?"Інші оплати:":"Всі незіставлені оплати:"}</div>
-          {rest.map(p=>{const b=srcBadge(p.source);return <div key={p.id} onClick={()=>setSel(sel===p.id?null:p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:sel===p.id?T.primaryBg||"#eff6ff":T.surface,border:`1px solid ${sel===p.id?T.primary:T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:10,padding:"1px 6px",background:b.bg,color:b.color,borderRadius:6,fontWeight:600}}>{b.label}</span>
-                <span style={{fontWeight:600,fontSize:12}}>{p.payer_name||"—"}</span>
-                {p.match_score>0&&<span style={{fontSize:10,color:T.warn,fontWeight:600}}>{Math.round(p.match_score*100)}%</span>}
-              </div>
-              <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
-            </div>
-            {sel===p.id&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder.id)}} style={{padding:"5px 12px",background:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Підтвердити</button>}
-          </div>})}
-        </div>}
-      </>}
+    const PayRow=({p,accent})=>{const b=srcBadge(p.source);const isSel=sel===p.id;return <div onClick={()=>setSel(isSel?null:p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:isSel?(accent?T.accentLight:"#eff6ff"):T.surface,border:`1px solid ${isSel?(accent?T.accent:T.primary):T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span style={{fontSize:10,padding:"1px 6px",background:b.bg,color:b.color,borderRadius:6,fontWeight:600}}>{b.label}</span>
+          <span style={{fontWeight:600,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.payer_name||"—"}</span>
+          {p.match_score>=0.65&&<span style={{fontSize:10,color:T.accent,fontWeight:700}}>{Math.round(p.match_score*100)}%</span>}
+          {p.match_score>0&&p.match_score<0.65&&<span style={{fontSize:10,color:T.warn,fontWeight:600}}>{Math.round(p.match_score*100)}%</span>}
+        </div>
+        <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
+      </div>
+      {isSel&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder.id)}} style={{padding:"5px 12px",background:accent?T.accent:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Підтвердити</button>}
+    </div>};
+    return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`}}>
+      {/* Search */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Пошук по імені або сумі..." style={{width:"100%",padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none",background:T.surface,marginBottom:8}}/>
+      <div style={{maxHeight:300,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+        {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
+          {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає незіставлених оплат</div>}
+          {!search&&suggested.length>0&&<div style={{marginBottom:6}}>
+            <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>✨ Рекомендовані збіги:</div>
+            {suggested.map(p=><PayRow key={p.id} p={p} accent/>)}
+          </div>}
+          {rest.length>0&&<div>
+            <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{!search&&suggested.length>0?"Інші оплати:":"Всі незіставлені оплати:"}</div>
+            {rest.map(p=><PayRow key={p.id} p={p}/>)}
+          </div>}
+        </>}
+      </div>
     </div>;
   };
 
@@ -1145,6 +1143,22 @@ const ProductsPage=()=>{
             {monoInfo&&<div style={{padding:10,background:"#f0fdf4",borderRadius:10,marginBottom:10,fontSize:12,color:"#166534"}}>
               Підключено: {monoInfo.client_name} ({monoInfo.accounts} UAH рахунків)
             </div>}
+            {/* Account selector */}
+            {monoAccounts.length>0&&<div style={{marginBottom:10}}>
+              <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:6}}>Рахунки для відстеження оплат:</label>
+              {monoAccounts.map(acc=>{const sel=monoSettings.selected_accounts||[];const isOn=sel.includes(acc.id);return <div key={acc.id} onClick={()=>{
+                const cur=monoSettings.selected_accounts||[];
+                const next=isOn?cur.filter(x=>x!==acc.id):[...cur,acc.id];
+                setMonoSettings(p=>({...p,selected_accounts:next}));
+              }} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:isOn?"#f0fdf4":T.surfaceAlt,border:`1.5px solid ${isOn?"#10b981":T.border}`,borderRadius:10,marginBottom:6,cursor:"pointer",transition:"all .15s"}}>
+                <div style={{width:20,height:20,borderRadius:6,border:`2px solid ${isOn?"#10b981":T.border}`,background:isOn?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontWeight:700,flexShrink:0}}>{isOn?"✓":""}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600}}>{acc.maskedPan||acc.type||"Рахунок"}</div>
+                  <div style={{fontSize:11,color:T.textSec}}>{acc.iban?acc.iban.slice(-10)+"...":""} · Баланс: {acc.balance}₴</div>
+                </div>
+              </div>})}
+              {(monoSettings.selected_accounts||[]).length===0&&<div style={{fontSize:11,color:"#f59e0b",padding:"4px 0"}}>⚠️ Якщо не обрати жодного — оплати будуть збиратися з усіх рахунків</div>}
+            </div>}
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button disabled={monoSaving} onClick={async()=>{
                 if(!monoSettings.api_token){noti("Введіть API Token");return;}
@@ -1154,17 +1168,27 @@ const ProductsPage=()=>{
                 /* Register webhook in Monobank */
                 const r=await api("/api/monobank/setup-webhook",{method:"POST",body:JSON.stringify({token:monoSettings.api_token,webhook_url:monoSettings.webhook_url})});
                 setMonoSaving(false);
-                if(r&&r.status==="ok"){setMonoStatus("connected");setMonoInfo(r);noti("Monobank підключено!");}
+                if(r&&r.status==="ok"){setMonoStatus("connected");setMonoInfo(r);if(r.accounts_list)setMonoAccounts(r.accounts_list);noti("Monobank підключено!");}
                 else{setMonoStatus("disconnected");noti(r?.error||"Помилка підключення");}
               }} style={{padding:"9px 18px",background:"#10b981",color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer",opacity:monoSaving?.6:1}}>
                 {monoSaving?"Підключаю...":"Підключити та зберегти"}
+              </button>
+              <button disabled={monoSaving} onClick={async()=>{
+                if(!monoSettings.api_token){noti("Введіть API Token");return;}
+                setMonoSaving(true);
+                const r=await api("/api/monobank/accounts",{method:"POST",body:JSON.stringify({token:monoSettings.api_token})});
+                setMonoSaving(false);
+                if(r&&r.accounts_list){setMonoAccounts(r.accounts_list);noti("Знайдено "+r.accounts_list.length+" рахунків");}
+                else noti(r?.error||"Не вдалося завантажити");
+              }} style={{padding:"9px 18px",background:T.surfaceAlt,color:T.text,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                Завантажити рахунки
               </button>
               <button disabled={monoSaving} onClick={async()=>{
                 setMonoSaving(true);
                 await api("/api/settings/monobank",{method:"PATCH",body:JSON.stringify(monoSettings)});
                 setMonoSaving(false);
                 setMonoStatus(monoSettings.api_token?"connected":"disconnected");
-                noti("Збережено (без реєстрації вебхуку)");
+                noti("Збережено");
               }} style={{padding:"9px 18px",background:T.surfaceAlt,color:T.text,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>
                 Тільки зберегти
               </button>
