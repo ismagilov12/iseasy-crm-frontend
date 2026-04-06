@@ -153,12 +153,22 @@ function App(){
   const[comments,setComments]=useState([]);const[commentReply,setCommentReply]=useState(null);const[commentReplyText,setCommentReplyText]=useState("");
   const[attachImg,setAttachImg]=useState(null);const fileInputRef=useRef(null);
   const[mediaCache,setMediaCache]=useState({});
+  const[ctxMenu,setCtxMenu]=useState(null);/* {x,y,msg} */
+  const[clientDialog,setClientDialog]=useState(null);/* {surname,name,city,branch,phone} */
+  const[prodSaveSelect,setProdSaveSelect]=useState(null);/* Set of selected product ids for save */
 
   const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const savedScrollRef=useRef(null);const scrollToBottom=()=>{if(chatBoxRef.current){chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
   const isEmptyCD=(cd)=>!cd||typeof cd!=="object"||(Object.keys(cd).length===0)||(!cd.surname&&!cd.name&&!cd.phone&&!cd.city&&!cd.branch);
   /* Save and restore chat scroll when toggling panels */
   const toggleClOpen=()=>{if(chatBoxRef.current)savedScrollRef.current=chatBoxRef.current.scrollTop;setClOpen(p=>!p);};
   useLayoutEffect(()=>{if(savedScrollRef.current!==null&&chatBoxRef.current){chatBoxRef.current.scrollTop=savedScrollRef.current;savedScrollRef.current=null;}},[clOpen]);
+  /* Close context menu on click anywhere */
+  useEffect(()=>{const h=()=>setCtxMenu(null);window.addEventListener("click",h);return()=>window.removeEventListener("click",h);},[]);
+  /* Right-click → context menu on messages */
+  const handleMsgContext=(e,msg)=>{if(msg.dir!=="in"||msg.type==="comment")return;e.preventDefault();const d=parseCD(msg.text);setCtxMenu({x:e.clientX||e.touches?.[0]?.clientX||100,y:e.clientY||e.touches?.[0]?.clientY||100,msg,parsed:d});};
+  /* Open client dialog with pre-filled data */
+  const openClientDialog=(msg)=>{const d=parseCD(msg?.text||"")||{};setClientDialog({surname:d.surname||"",name:d.name||"",city:d.city||"",branch:d.branch||"",phone:d.phone||"",msgText:msg?.text||""});setCtxMenu(null);};
+  const confirmClientDialog=()=>{if(!clientDialog)return;const d={...clientDialog};delete d.msgText;mkClient(d);setClientDialog(null);};
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
   useEffect(()=>{const curLen=conv?.msgs?.length||0;const changed=selId!==prevSelId.current||curLen!==prevMsgLen.current;if(!changed)return;prevSelId.current=selId;prevMsgLen.current=curLen;scrollToBottom();const t1=setTimeout(scrollToBottom,150);const t2=setTimeout(scrollToBottom,500);const t3=setTimeout(scrollToBottom,1200);const t4=setTimeout(scrollToBottom,2500);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4);};},[selId,conv?.msgs?.length]);
@@ -576,7 +586,7 @@ const ProductsPage=()=>{
       const imported=[];let idx=Date.now();
       Object.entries(parentMap).forEach(([uid,p])=>{const kids=childMap[uid]||[];const firstSku=kids[0]?.sku||p.sku||"";const price=kids[0]?.price||0;const sizes=[...new Set(kids.map(c=>parseInt(c.size)).filter(n=>!isNaN(n)))].sort((a,b)=>a-b);const hasSmall=sizes.some(s=>s<39);const hasBig=sizes.some(s=>s>41);const gender=hasSmall&&hasBig?"u":hasSmall?"f":"m";const cat=p.category.replace(/ULTERA;/g,"").trim()||"Інше";
         imported.push({id:idx++,name:p.title,sku:firstSku,price:Math.round(price),cost:0,stock:0,sizes:sizes.length?sizes:(gender==="m"?[40,41,42,43,44,45]:gender==="f"?[36,37,38,39,40,41]:[36,37,38,39,40,41,42,43,44,45]),gender,category:cat,img:p.photo||""});});
-      if(imported.length){setProducts(imported);noti("Імпортовано: "+imported.length+" товарів");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
+      if(imported.length){setProducts(imported);setProdSaveSelect(new Set(imported.map(p=>p.id)));noti("Імпортовано: "+imported.length+" товарів — оберіть які зберегти");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
     const handleExportCSV=()=>{const hdr="Назва;Артикул;Ціна;Собівартість;Категорія;Розміри;Стать;Фото\n";const rows=products.map(p=>[p.name,p.sku,p.price,p.cost,p.category,p.sizes.join(","),p.gender==="m"?"Ч":p.gender==="f"?"Ж":"Ж+Ч",p.img].join(";")).join("\n");const blob=new Blob(["\uFEFF"+hdr+rows],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="is-easy-products.csv";a.click();noti("CSV експортовано");};
     const dupProd=(p)=>handleDuplicateProduct(p);
 
@@ -609,6 +619,7 @@ const ProductsPage=()=>{
             <button onClick={handleImportCSV} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 CSV</button>
             <button onClick={handleAddProduct} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
           </div>
+          <button onClick={()=>setProdSaveSelect(new Set(products.map(p=>p.id)))} style={{width:"100%",marginTop:10,padding:"12px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:14,fontWeight:700,cursor:"pointer"}}>💾 Зберегти все в базу</button>
         </div>
       ):(
         <div>
@@ -620,6 +631,7 @@ const ProductsPage=()=>{
         <button onClick={handleCSV} style={{padding:"9px 16px",background:T.text,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 Імпорт CSV</button>
         <button onClick={handleExportCSV} style={{padding:"9px 16px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📤 Експорт CSV</button>
         <button onClick={handleAddProduct} style={{padding:"9px 16px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
+        <button onClick={()=>setProdSaveSelect(new Set(products.map(p=>p.id)))} style={{padding:"9px 16px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:"pointer"}}>💾 Зберегти все в базу</button>
       </div>
       <div className="card">
         <div style={{overflowX:"auto"}}><table>
@@ -812,7 +824,7 @@ const ProductsPage=()=>{
           </div></div>})()
           :
           /* ── REGULAR / PHOTO MESSAGE ── */
-          <div style={{display:"flex",justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}><div style={{position:"relative"}}>
+          <div style={{display:"flex",justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}><div style={{position:"relative"}} onContextMenu={e=>handleMsgContext(e,msg)} onTouchStart={e=>{if(msg.dir!=="in"||msg.type)return;const t=setTimeout(()=>handleMsgContext({preventDefault:()=>{},clientX:e.touches[0].clientX,clientY:e.touches[0].clientY},msg),600);e.currentTarget._lp=t;}} onTouchEnd={e=>{if(e.currentTarget._lp)clearTimeout(e.currentTarget._lp);}}>
             {msg.mediaUrl&&(msg.msgType==="image"||msg.mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)/i))?
               <div style={{maxWidth:isMobile?260:360,borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",overflow:"hidden",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow,marginBottom:msg.text?4:0}}>
                 <img src={msg.mediaUrl} alt="" style={{width:"100%",display:"block",cursor:"pointer"}} onClick={()=>window.open(msg.mediaUrl,"_blank")}/>
@@ -1035,6 +1047,53 @@ const ProductsPage=()=>{
             <input value={editClient[k]||""} onChange={e=>setEditClient(p=>({...p,[k]:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/></div>)}
         <div style={{display:"flex",gap:10,marginTop:10}}><button onClick={()=>setEditClient(null)} style={{padding:"10px 18px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
           <button onClick={()=>{setConvs(p=>p.map(c=>c.id===selId?{...c,cd:editClient}:c));setEditClient(null);noti("Збережено!");}} style={{padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer"}}>Зберегти</button>
+        </div>
+      </div>
+    </div>}
+
+    {/* CONTEXT MENU on right-click / long-press */}
+    {ctxMenu&&<div style={{position:"fixed",left:Math.min(ctxMenu.x,window.innerWidth-180),top:Math.min(ctxMenu.y,window.innerHeight-120),background:T.surface,borderRadius:14,boxShadow:T.shadowLg,border:`1px solid ${T.border}`,zIndex:500,minWidth:170,animation:"fadeIn .15s ease",overflow:"hidden"}}>
+      <div onClick={()=>openClientDialog(ctxMenu.msg)} style={{padding:"12px 16px",cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:8,transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>👤 Створити клієнта</div>
+      <div onClick={()=>{navigator.clipboard?.writeText(ctxMenu.msg.text||"");noti("Скопійовано!");setCtxMenu(null);}} style={{padding:"12px 16px",cursor:"pointer",fontSize:13,fontWeight:500,display:"flex",alignItems:"center",gap:8,borderTop:`1px solid ${T.borderLight}`,transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>📋 Копіювати текст</div>
+    </div>}
+
+    {/* CLIENT CREATION DIALOG */}
+    {clientDialog&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:600,padding:16}}>
+      <div style={{background:T.surface,borderRadius:20,padding:28,width:420,maxWidth:"100%",boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>
+        <h3 style={{marginBottom:6,fontSize:18}}>👤 Створити клієнта</h3>
+        <div style={{fontSize:12,color:T.textSec,marginBottom:16}}>Перевірте дані та натисніть Підтвердити</div>
+        {clientDialog.msgText&&<div style={{background:T.surfaceAlt,borderRadius:12,padding:"10px 14px",marginBottom:16,fontSize:12,color:T.textSec,maxHeight:60,overflowY:"auto",borderLeft:`3px solid ${T.primary}`}}>{clientDialog.msgText}</div>}
+        {[["Прізвище","surname"],["Ім'я","name"],["Місто","city"],["Відділення НП","branch"],["Телефон","phone"]].map(([label,key])=>
+          <div key={key} style={{marginBottom:10}}>
+            <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:3}}>{label}</label>
+            <input value={clientDialog[key]||""} onChange={e=>setClientDialog(p=>({...p,[key]:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:14,outline:"none",background:T.surfaceAlt}} placeholder={label+"..."}/>
+          </div>)}
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <button onClick={()=>setClientDialog(null)} style={{padding:"11px 20px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500,fontSize:13}}>Скасувати</button>
+          <button onClick={confirmClientDialog} style={{flex:1,padding:"11px 20px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:700,cursor:"pointer",fontSize:14}}>Підтвердити</button>
+        </div>
+      </div>
+    </div>}
+
+    {/* PRODUCT SAVE SELECT MODAL */}
+    {prodSaveSelect&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:16}}>
+      <div style={{background:T.surface,borderRadius:20,padding:28,width:520,maxWidth:"100%",maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>
+        <h3 style={{marginBottom:6,fontSize:18}}>💾 Зберегти товари в базу</h3>
+        <div style={{fontSize:12,color:T.textSec,marginBottom:14}}>Оберіть товари для збереження ({prodSaveSelect.size} обрано з {products.length})</div>
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          <button onClick={()=>setProdSaveSelect(new Set(products.map(p=>p.id)))} style={{padding:"6px 14px",fontSize:12,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",background:T.surfaceAlt,fontWeight:500}}>Обрати всі</button>
+          <button onClick={()=>setProdSaveSelect(new Set())} style={{padding:"6px 14px",fontSize:12,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",background:T.surfaceAlt,fontWeight:500}}>Зняти всі</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",marginBottom:14}}>
+          {products.map(p=><div key={p.id} onClick={()=>setProdSaveSelect(prev=>{const n=new Set(prev);if(n.has(p.id))n.delete(p.id);else n.add(p.id);return n;})} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",cursor:"pointer",borderRadius:10,marginBottom:4,background:prodSaveSelect.has(p.id)?T.primaryLight:T.surfaceAlt,border:prodSaveSelect.has(p.id)?`2px solid ${T.primary}`:`2px solid transparent`,transition:"all .15s"}}>
+            <div style={{width:20,height:20,borderRadius:6,border:prodSaveSelect.has(p.id)?`2px solid ${T.primary}`:`2px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",background:prodSaveSelect.has(p.id)?T.primary:"#fff",flexShrink:0}}>{prodSaveSelect.has(p.id)&&<span style={{color:"#fff",fontSize:12,fontWeight:800}}>✓</span>}</div>
+            <div style={{width:36,height:36,borderRadius:8,overflow:"hidden",flexShrink:0,background:T.border}}>{p.img?<img src={p.img} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>👟</span>}</div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div><div style={{fontSize:11,color:T.textSec}}>{p.sku} · {p.price}₴</div></div>
+          </div>)}
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>setProdSaveSelect(null)} style={{padding:"11px 20px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
+          <button disabled={prodSaveSelect.size===0} onClick={()=>{const selected=products.filter(p=>prodSaveSelect.has(p.id));saveProductsToDB(selected);setProdSaveSelect(null);}} style={{flex:1,padding:"11px 20px",background:prodSaveSelect.size>0?T.accent:"#ccc",color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:700,cursor:prodSaveSelect.size>0?"pointer":"not-allowed",fontSize:14}}>💾 Зберегти {prodSaveSelect.size} товарів</button>
         </div>
       </div>
     </div>}
