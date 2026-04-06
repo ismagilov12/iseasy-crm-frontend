@@ -38,7 +38,7 @@ button{transition:all .15s ease}button:hover{opacity:.92;transform:translateY(-1
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const{useState,useRef,useEffect,useCallback}=React;
+const{useState,useRef,useEffect,useCallback,useLayoutEffect}=React;
 
 /* ═══ API ═══ */
 const API="https://iseasy-crm-api.vercel.app";
@@ -154,8 +154,11 @@ function App(){
   const[attachImg,setAttachImg]=useState(null);const fileInputRef=useRef(null);
   const[mediaCache,setMediaCache]=useState({});
 
-  const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const scrollToBottom=()=>{if(chatBoxRef.current){chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
+  const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const savedScrollRef=useRef(null);const scrollToBottom=()=>{if(chatBoxRef.current){chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
   const isEmptyCD=(cd)=>!cd||typeof cd!=="object"||(Object.keys(cd).length===0)||(!cd.surname&&!cd.name&&!cd.phone&&!cd.city&&!cd.branch);
+  /* Save and restore chat scroll when toggling panels */
+  const toggleClOpen=()=>{if(chatBoxRef.current)savedScrollRef.current=chatBoxRef.current.scrollTop;setClOpen(p=>!p);};
+  useLayoutEffect(()=>{if(savedScrollRef.current!==null&&chatBoxRef.current){chatBoxRef.current.scrollTop=savedScrollRef.current;savedScrollRef.current=null;}},[clOpen]);
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
   useEffect(()=>{const curLen=conv?.msgs?.length||0;const changed=selId!==prevSelId.current||curLen!==prevMsgLen.current;if(!changed)return;prevSelId.current=selId;prevMsgLen.current=curLen;scrollToBottom();const t1=setTimeout(scrollToBottom,150);const t2=setTimeout(scrollToBottom,500);const t3=setTimeout(scrollToBottom,1200);const t4=setTimeout(scrollToBottom,2500);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4);};},[selId,conv?.msgs?.length]);
@@ -645,7 +648,7 @@ const ProductsPage=()=>{
       {/* CLIENT */}
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Клієнт {conv.cd&&<span onClick={()=>setEditClient(conv.cd)} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>✎ Редагувати</span>}</div>
-        <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div><span style={{fontSize:12,color:T.textSec,transition:"transform .2s",transform:clOpen?"rotate(180deg)":"rotate(0)"}}>{"\u25BC"}</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>toggleClOpen()}><Av name={conv.name} size={50} check={!!conv.cd}/><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div><span style={{fontSize:12,color:T.textSec,transition:"transform .2s",transform:clOpen?"rotate(180deg)":"rotate(0)"}}>{"\u25BC"}</span></div>
         {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13,display:"grid",gridTemplateColumns:"auto 1fr",gap:"6px 12px"}}>
           {[["Тел",conv.cd.phone||"","phone"],["Місто",conv.cd.city||"","city"],["Відд.",conv.cd.branch?"№"+conv.cd.branch:"","branch"],["Інста","@"+(conv.username||"")]].map(([k,v,f],i)=>
             <React.Fragment key={i}><span style={{color:T.textSec,fontWeight:500}}>{k}</span>{f?<input value={(v||"").replace("№","")} onChange={e=>updateClient(f,e.target.value)} style={{border:"none",borderBottom:`1px solid ${T.border}`,fontSize:13,outline:"none",padding:"2px 0",background:"transparent"}}/>:<span>{v}</span>}</React.Fragment>)}
@@ -752,7 +755,7 @@ const ProductsPage=()=>{
     {conv?<>
       <div className="glass" style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         {isMobile&&<span onClick={()=>setMobileView("list")} style={{fontSize:22,cursor:"pointer",padding:"2px 6px",color:T.textSec}}>←</span>}
-        <Av name={conv.name} size={36} check={!!conv.cd} onClick={()=>{if(isMobile)setMobileView("client");else setClOpen(!clOpen);}}/>
+        <Av name={conv.name} size={36} check={!!conv.cd} onClick={()=>{if(isMobile)setMobileView("client");else toggleClOpen();}}/>
         <div style={{flex:1,minWidth:0}} onClick={()=>{if(isMobile)setMobileView("client");}}>
           <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default"}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div>
         </div>
