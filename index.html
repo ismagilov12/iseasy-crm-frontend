@@ -286,6 +286,8 @@ function App(){
         if(selId&&typeof selId==="number"&&!isTyping)fetches.push(api("/api/conversations/"+selId+"/messages"));
         const[convsRaw,cmts,ordersRefresh,uPays,selMsgs]=await Promise.all(fetches);
         if(uPays&&Array.isArray(uPays))setUnmatchedPays(uPays);
+        /* Refresh matched payments for selected conversation */
+        if(selId&&typeof selId==="number"){api("/api/payments/by-conversation/"+selId).then(mp=>{if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===selId?{...c,_matchedPays:mp}:c));});}
 
         /* Update messages for selected conv — preserve scroll */
         if(selId&&selMsgs&&selMsgs.length>0){
@@ -319,7 +321,7 @@ function App(){
             const mergedOrders=nc.orders&&nc.orders.length>0?nc.orders:(old&&old.orders?old.orders:[]);
             const mergedCD=old&&!isEmptyCD(old.cd)?old.cd:nc.cd;
             const mergedFunnel=old&&old.funnel!=="new"?old.funnel:nc.funnel;
-            return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread,orders:mergedOrders,cd:mergedCD,funnel:mergedFunnel};
+            return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,_matchedPays:old?._matchedPays||[],unread:nc.id===selId?0:nc.unread,orders:mergedOrders,cd:mergedCD,funnel:mergedFunnel};
           };
           /* Merge comments */
           if(cmts&&cmts.length>0){
@@ -477,6 +479,8 @@ function App(){
   const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(false);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile){setSlideDir("right");setMobileView("chat");}
     api("/api/conversations/"+id+"/read",{method:"POST"});
     loadMsgs(id);
+    /* Load matched payments for this conversation */
+    api("/api/payments/by-conversation/"+id).then(mp=>{if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===id?{...c,_matchedPays:mp}:c));});
   };
   const refreshAll=async()=>{
     try{const[convsRaw,cmts]=await Promise.all([api("/api/conversations"),api("/api/comments")]);
@@ -596,6 +600,56 @@ function App(){
   /* ═══ PRODUCTS PAGE ═══ */
   
   /* ═══ PRODUCT PICKER COMPONENT ═══ */
+
+  /* ═══ PAYMENT PICKER COMPONENT ═══ */
+  const PaymentPicker=({conv,curOrder,onMatch,noti})=>{
+    const[pays,setPays]=useState([]);const[loading,setLoading]=useState(true);const[sel,setSel]=useState(null);
+    useEffect(()=>{
+      (async()=>{
+        const surname=(conv.cd?.surname||conv.name||"").trim();
+        const data=await api("/api/payments/suggest?client_name="+encodeURIComponent(surname)+"&conversation_id="+(conv.id||0));
+        if(data&&Array.isArray(data))setPays(data);
+        setLoading(false);
+      })();
+    },[conv.id]);
+    const suggested=pays.filter(p=>p.match_score>=0.65);
+    const rest=pays.filter(p=>p.match_score<0.65);
+    const fmtDate=d=>{if(!d)return"";try{return new Date(d).toLocaleDateString("uk",{day:"2-digit",month:"2-digit",year:"2-digit"})}catch(e){return d.split("T")[0]||""}};
+    const srcBadge=s=>s==="monobank"?{bg:"#e0f2fe",color:"#0369a1",label:"🏦 Mono"}:{bg:"#fef3c7",color:"#92400e",label:"💳 WFP"};
+    return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`,maxHeight:280,overflowY:"auto"}}>
+      {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
+        {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає незіставлених оплат</div>}
+        {suggested.length>0&&<div style={{marginBottom:6}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>✨ Рекомендовані збіги:</div>
+          {suggested.map(p=>{const b=srcBadge(p.source);return <div key={p.id} onClick={()=>setSel(sel===p.id?null:p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:sel===p.id?T.accentLight:T.surface,border:`1px solid ${sel===p.id?T.accent:T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,padding:"1px 6px",background:b.bg,color:b.color,borderRadius:6,fontWeight:600}}>{b.label}</span>
+                <span style={{fontWeight:600,fontSize:12}}>{p.payer_name||"—"}</span>
+                <span style={{fontSize:10,color:T.accent,fontWeight:700}}>{Math.round(p.match_score*100)}%</span>
+              </div>
+              <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
+            </div>
+            {sel===p.id&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder.id)}} style={{padding:"5px 12px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Підтвердити</button>}
+          </div>})}
+        </div>}
+        {rest.length>0&&<div>
+          <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{suggested.length>0?"Інші оплати:":"Всі незіставлені оплати:"}</div>
+          {rest.map(p=>{const b=srcBadge(p.source);return <div key={p.id} onClick={()=>setSel(sel===p.id?null:p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:sel===p.id?T.primaryBg||"#eff6ff":T.surface,border:`1px solid ${sel===p.id?T.primary:T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:10,padding:"1px 6px",background:b.bg,color:b.color,borderRadius:6,fontWeight:600}}>{b.label}</span>
+                <span style={{fontWeight:600,fontSize:12}}>{p.payer_name||"—"}</span>
+                {p.match_score>0&&<span style={{fontSize:10,color:T.warn,fontWeight:600}}>{Math.round(p.match_score*100)}%</span>}
+              </div>
+              <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
+            </div>
+            {sel===p.id&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder.id)}} style={{padding:"5px 12px",background:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Підтвердити</button>}
+          </div>})}
+        </div>}
+      </>}
+    </div>;
+  };
 
   /* ═══ CLIENT CARD OVERLAY (MOBILE) ═══ */
   const ClientCardOverlay=({onClose})=>{if(!conv)return null;const orders=conv.orders||[];
@@ -808,36 +862,41 @@ const ProductsPage=()=>{
       </div>
       {/* PAYMENT */}
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
-        <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>Оплата</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5}}>Оплата</div>
+          {curOrder&&curOrder.paid<curOrder.total&&<button onClick={()=>setPayOpen(!payOpen)} style={{padding:"4px 10px",background:payOpen?T.primary:T.surfaceAlt,color:payOpen?"#fff":T.text,border:`1px solid ${payOpen?T.primary:T.border}`,borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer"}}>
+            {payOpen?"▲ Згорнути":"💰 Додати оплату"}
+          </button>}
+        </div>
+
+        {/* Progress bar */}
         {curOrder&&<div style={{marginBottom:10,padding:"8px 12px",background:curOrder.paid>=curOrder.total?T.accentLight:T.warnLight,borderRadius:10,fontSize:13}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><span>Оплачено:</span><span style={{fontWeight:700}}>{curOrder.paid||0}/{curOrder.total} грн</span></div>
           <div style={{background:T.border,borderRadius:4,height:6,marginTop:6,overflow:"hidden"}}><div style={{background:curOrder.paid>=curOrder.total?T.accent:T.warn,height:"100%",width:Math.min(100,((curOrder.paid||0)/curOrder.total)*100)+"%",borderRadius:4,transition:"width .3s"}}/></div>
         </div>}
-        {/* Auto-matched from local IPAYS (legacy) */}
-        {autoP&&curOrder&&curOrder.paid<curOrder.total&&<div style={{background:T.primaryLight,border:"1px solid #c7d2fe",borderRadius:12,padding:10,marginBottom:8}}>
-          <div style={{fontSize:11,fontWeight:700,color:T.primary,marginBottom:4}}>Знайдено:</div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:12}}><span className="badge" style={{background:autoP.src==="mono"?"#1a1a1a":"#7e3af2",color:"#fff"}}>{autoP.src==="mono"?"MONO":"WFP"}</span> {autoP.name} — {autoP.amount}грн</span>
-            <button onClick={()=>matchPay(autoP.id,curOrder.id)} style={{padding:"5px 12px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer",fontSize:11}}>✓</button></div></div>}
-        {/* Real unmatched payments from DB */}
-        {unmatchedPays.length>0&&curOrder&&curOrder.paid<curOrder.total&&<div>
-          <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:6}}>💰 Непідтверджені оплати:</div>
-          {unmatchedPays.map(p=><div key={p.id} style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:10,padding:8,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:4}}>
-            <div style={{fontSize:12}}>
-              <span className="badge" style={{background:p.source==="monobank"?"#1a1a1a":"#7e3af2",color:"#fff",fontSize:10,padding:"2px 6px"}}>{p.source==="monobank"?"MONO":"WFP"}</span>
-              <span style={{marginLeft:6,fontWeight:600}}>{p.payer_name||"?"}</span>
-              <span style={{marginLeft:6,fontWeight:700,color:"#059669"}}>{p.amount}₴</span>
-              <div style={{fontSize:10,color:T.textSec,marginTop:2}}>{p.payment_date?new Date(p.payment_date).toLocaleString("uk",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</div>
-            </div>
-            <button onClick={async()=>{
-              const r=await api("/api/payments/"+p.id+"/match",{method:"POST",body:JSON.stringify({order_id:curOrder.id})});
-              if(r&&r.status==="ok"){
-                noti(r.fully_paid?"Оплату підтверджено повністю!":"Оплату додано!");
-                setUnmatchedPays(prev=>prev.filter(x=>x.id!==p.id));
-                updateOrder(curOrder.id,{paid:r.new_paid,status:r.fully_paid?"confirmed":curOrder.status});
-              }else noti("Помилка");
-            }} style={{padding:"5px 14px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer",fontSize:11}}>Підтвердити ✓</button>
+
+        {/* Matched payments for this conversation (history) */}
+        {conv._matchedPays&&conv._matchedPays.length>0&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.accent,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Підтверджені оплати:</div>
+          {conv._matchedPays.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",background:T.accentLight,borderRadius:8,marginBottom:4,fontSize:12}}>
+            <span><span style={{fontWeight:600}}>{p.payer_name||"—"}</span> <span style={{color:T.textSec,fontSize:10}}>{p.source==="monobank"?"🏦":"💳"}</span></span>
+            <span style={{fontWeight:700,color:T.accent}}>+{p.amount}₴</span>
           </div>)}
         </div>}
+
+        {/* Payment picker — dropdown with fuzzy matching */}
+        {payOpen&&curOrder&&curOrder.paid<curOrder.total&&<PaymentPicker conv={conv} curOrder={curOrder} onMatch={async(payId,ordId)=>{
+          const r=await api("/api/payments/"+payId+"/match",{method:"POST",body:JSON.stringify({order_id:ordId})});
+          if(r&&r.status==="ok"){
+            noti(r.fully_paid?"Оплату підтверджено повністю!":"Оплату додано!");
+            setUnmatchedPays(prev=>prev.filter(x=>x.id!==payId));
+            updateOrder(ordId,{paid:r.new_paid,status:r.fully_paid?"confirmed":curOrder.status});
+            setPayOpen(false);
+            /* Refresh matched payments */
+            const mp=await api("/api/payments/by-conversation/"+selId);
+            if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===selId?{...c,_matchedPays:mp}:c));
+          }else noti("Помилка");
+        }} noti={noti}/>}
       </div>
       {/* NOVA POSHTA */}
       <div style={{padding:16,background:T.surface}}>
