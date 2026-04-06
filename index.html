@@ -203,10 +203,13 @@ function App(){
   useEffect(()=>{
     (async()=>{
       try{
-        const[prods,convsRaw,cmts]=await Promise.all([api("/api/products"),api("/api/conversations"),api("/api/comments")]);
+        const[prods,convsRaw,cmts,ordersRaw]=await Promise.all([api("/api/products"),api("/api/conversations"),api("/api/comments"),api("/api/orders?limit=200")]);
         if(prods&&prods.length>0){const mapped_prods=prods.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[40,41,42,43,44,45]),season:p.season||"літо"}));setProducts(mapped_prods);}
         if(convsRaw&&convsRaw.length>0){
           const pMap={};(prods&&prods.length?prods:products).forEach(p=>{pMap[p.id]=p;});
+          /* Group orders by conversation_id */
+          const ordByConv={};
+          if(ordersRaw&&ordersRaw.length>0){ordersRaw.forEach(o=>{const cid=o.conversation_id;if(!cid)return;if(!ordByConv[cid])ordByConv[cid]=[];ordByConv[cid].push({id:o.id,product:o.product_id?pMap[o.product_id]:{name:o.product_name||"",sku:"",img:""},product_id:o.product_id,product_name:o.product_name||"",size:o.size||"",total:o.total||o.price||0,paid:o.paid||0,status:o.status||"new",date:o.created_at?o.created_at.split("T")[0]:o.date||"",ttn:o.ttn||"",type:o.order_type||"order",npStatus:o.np_status||"",daysAtPost:o.days_at_post||0,repairNote:o.repair_note||"",repairPhotos:o.repair_photos||[],returnTtn:o.return_ttn||""});});}
           const mapped=convsRaw.map(c=>({
             id:c.id,username:c.instagram_username||c.username||"",name:c.client_name||c.name||"",
             funnel:c.funnel||"new",channel:c.channel||"instagram",
@@ -216,7 +219,7 @@ function App(){
             lastTs:c.last_message_at?new Date(c.last_message_at).getTime():0,
             unread:c.unread_count||c.unread||0,lastDir:c.last_message_dir||c.lastDir||"in",
             msgs:c.msgs||[],cd:c.cd||c.client_data||null,
-            orders:(c.orders||[]).map(o=>({...o,product:o.product_id?pMap[o.product_id]:o.product}))
+            orders:ordByConv[c.id]||[]
           }));
           /* Merge comments into conversations */
           if(cmts&&cmts.length>0){
@@ -261,9 +264,9 @@ function App(){
         /* Skip heavy refresh if user is typing */
         const isTyping=document.activeElement&&(document.activeElement.tagName==="INPUT"||document.activeElement.tagName==="TEXTAREA");
         inputFocusedRef.current=isTyping;
-        const fetches=[api("/api/conversations"),api("/api/comments")];
+        const fetches=[api("/api/conversations"),api("/api/comments"),api("/api/orders?limit=200")];
         if(selId&&typeof selId==="number"&&!isTyping)fetches.push(api("/api/conversations/"+selId+"/messages"));
-        const[convsRaw,cmts,selMsgs]=await Promise.all(fetches);
+        const[convsRaw,cmts,ordersRefresh,selMsgs]=await Promise.all(fetches);
 
         /* Update messages for selected conv — preserve scroll */
         if(selId&&selMsgs&&selMsgs.length>0){
@@ -275,6 +278,9 @@ function App(){
 
         if(convsRaw&&convsRaw.length>0){
           const pMap={};products.forEach(p=>{pMap[p.id]=p;});
+          /* Group refreshed orders by conversation_id */
+          const ordByConvR={};
+          if(ordersRefresh&&ordersRefresh.length>0){ordersRefresh.forEach(o=>{const cid=o.conversation_id;if(!cid)return;if(!ordByConvR[cid])ordByConvR[cid]=[];ordByConvR[cid].push({id:o.id,product:o.product_id?pMap[o.product_id]:{name:o.product_name||"",sku:"",img:""},product_id:o.product_id,product_name:o.product_name||"",size:o.size||"",total:o.total||o.price||0,paid:o.paid||0,status:o.status||"new",date:o.created_at?o.created_at.split("T")[0]:o.date||"",ttn:o.ttn||"",type:o.order_type||"order",npStatus:o.np_status||"",daysAtPost:o.days_at_post||0,repairNote:o.repair_note||"",repairPhotos:o.repair_photos||[],returnTtn:o.return_ttn||""});});}
           const mapped=convsRaw.map(c=>({
             id:c.id,username:c.instagram_username||c.username||"",name:c.client_name||c.name||"",
             funnel:c.funnel||"new",channel:c.channel||"instagram",
@@ -284,10 +290,11 @@ function App(){
             lastTs:c.last_message_at?new Date(c.last_message_at).getTime():0,
             unread:c.unread_count||0,lastDir:c.last_message_dir||"in",
             msgs:[],cd:c.cd||c.client_data||null,
-            orders:(c.orders||[]).map(o=>({...o,product:o.product_id?pMap[o.product_id]:o.product}))
+            orders:ordByConvR[c.id]||[]
           }));
           const mergeConv=(nc,old)=>{
-            const mergedOrders=old&&old.orders&&old.orders.length>0?old.orders:nc.orders;
+            /* Prefer DB orders (nc.orders) if available, else keep local */
+            const mergedOrders=nc.orders&&nc.orders.length>0?nc.orders:(old&&old.orders?old.orders:[]);
             const mergedCD=old&&!isEmptyCD(old.cd)?old.cd:nc.cd;
             const mergedFunnel=old&&old.funnel!=="new"?old.funnel:nc.funnel;
             return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread,orders:mergedOrders,cd:mergedCD,funnel:mergedFunnel};
@@ -340,23 +347,31 @@ function App(){
     /* Also update conversation's client_data jsonb for sync */
     api("/api/conversations/"+selId,{method:"PATCH",body:JSON.stringify({client_data:newCd})});
   };
-  const chFunnel=(f,instant)=>{if(isMobile&&!instant){const old=conv.funnel;setFunnelPending({newFunnel:f,oldFunnel:old});setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:f}:c));setFunnelOpen(false);}else{setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:f}:c));}
+  const chFunnel=(f,instant)=>{if(!instant){const old=conv.funnel;setFunnelPending({newFunnel:f,oldFunnel:old});setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:f}:c));setFunnelOpen(false);}else{setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:f}:c));}
     api("/api/conversations/"+selId,{method:"PATCH",body:JSON.stringify({funnel:f})});};
   const cancelFunnelChange=()=>{if(funnelPending){setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:funnelPending.oldFunnel}:c));setFunnelPending(null);noti("Скасовано");}};
   const confirmFunnelChange=()=>{setFunnelPending(null);noti("Статус змінено!");};
-  const addOrder=(pr,sz)=>{try{const adjPrice=(pr.season==="демісезон")?(pr.price||0)+500:(pr.price||0);const o={id:Date.now(),product:pr,size:sz,total:adjPrice,paid:0,status:"new",date:new Date().toISOString().split("T")[0],ttn:"",type:"order",npStatus:"",daysAtPost:0,repairNote:"",repairPhotos:[],returnTtn:""};
+  const addOrder=(pr,sz)=>{try{const adjPrice=(pr.season==="демісезон")?(pr.price||0)+500:(pr.price||0);
+    const cd=conv?.cd||{};const clientName=(cd.surname||"")+" "+(cd.name||"")||(conv?.name||"");
     const prodText=(pr.name||"Товар")+"\nАрт: "+(pr.sku||"-")+"\nРозмір: "+sz+"\nЦіна: "+adjPrice+" грн";const now=Date.now();
-    setConvs(p=>p.map(c=>c.id===selId?{...c,orders:[...(c.orders||[]),o],funnel:c.funnel==="new"?"processing":c.funnel,
+    /* Build order for DB with all required fields */
+    const dbOrder={conversation_id:selId,product_id:pr.id,product_name:pr.name||"",size:String(sz),quantity:1,price:adjPrice,total:adjPrice,paid:0,status:"new",order_type:"order",client:clientName.trim(),phone:cd.phone||"",city:cd.city||"",np_branch:cd.branch||"",ttn:"",np_status:"",days_at_post:0,repair_note:"",return_ttn:""};
+    /* Optimistic local update with temp id */
+    const tempO={id:now,product:pr,size:sz,total:adjPrice,paid:0,status:"new",date:new Date().toISOString().split("T")[0],ttn:"",type:"order",npStatus:"",daysAtPost:0,repairNote:"",repairPhotos:[],returnTtn:"",product_name:pr.name,product_id:pr.id};
+    setConvs(p=>p.map(c=>c.id===selId?{...c,orders:[...(c.orders||[]),tempO],funnel:c.funnel==="new"?"processing":c.funnel,
       msgs:[...(c.msgs||[]),{id:now,dir:"out",text:prodText,time:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),ts:now,mediaUrl:pr.img||"",msgType:pr.img?"image":"text",isProduct:true}],
       lastMsg:(pr.name||"Товар")+" | "+adjPrice+" грн",lastTime:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),lastTs:now,lastDir:"out",unread:0}:c).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0)));
     setProdModal(null);setSelSize(null);setInput("");
-    /* Send to Instagram: image + text + confirm button */
+    /* Send to Instagram */
     api("/api/conversations/"+selId+"/messages",{method:"POST",body:JSON.stringify({text:prodText,image_url:pr.img||"",quick_replies:[{title:"✅ Підтвердити",payload:"CONFIRM_ORDER"}]})});
-    api("/api/orders",{method:"POST",body:JSON.stringify({conversation_id:selId,product_id:pr.id,size:sz,total:adjPrice,paid:0,status:"new",type:"order"})});
+    /* Save order to DB and update local with real ID */
+    api("/api/orders",{method:"POST",body:JSON.stringify(dbOrder)}).then(res=>{if(res&&Array.isArray(res)&&res[0]?.id){const realId=res[0].id;setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).map(o=>o.id===now?{...o,id:realId}:o)}:c));}});
     noti("Товар додано в замовлення!");}catch(e){console.error("addOrder error",e);noti("Помилка додавання товару");}};
   const removeOrder=(oid)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).filter(o=>o.id!==oid)}:c));api("/api/orders/"+oid,{method:"DELETE"});noti("Замовлення видалено");};
   const updateOrder=(oid,upd)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).map(o=>o.id===oid?{...o,...upd}:o)}:c));
-    api("/api/orders/"+oid,{method:"PATCH",body:JSON.stringify(upd)});};
+    /* Map local field names to DB column names */
+    const dbUpd={};Object.entries(upd).forEach(([k,v])=>{const map={type:"order_type",npStatus:"np_status",daysAtPost:"days_at_post",repairNote:"repair_note",repairPhotos:"repair_photos",returnTtn:"return_ttn"};dbUpd[map[k]||k]=v;});
+    api("/api/orders/"+oid,{method:"PATCH",body:JSON.stringify(dbUpd)});};
   const matchPay=(pid,oid)=>{const pay=pays.find(p=>p.id===pid);const ord=(conv?.orders||[]).find(o=>o.id===oid);if(!pay||!ord)return;setMatched(prev=>new Set([...prev,pid]));const np=(ord.paid||0)+pay.amount;const full=np>=ord.total;updateOrder(oid,{paid:np,status:full?"confirmed":"payment"});if(full)noti("Оплату підтверджено повністю!");else noti("Оплату додано!");setPayOpen(false);
     api("/api/payments/"+pid,{method:"PATCH",body:JSON.stringify({order_id:oid,matched:true})});};
   const mkTTN=(oid)=>{const ttn="2045"+String(Math.floor(Math.random()*9999999999)).padStart(10,"0");updateOrder(oid,{ttn,status:"shipped",npStatus:"in_transit"});send("Відправлено! ТТН: "+ttn);noti("ТТН створено!");};
@@ -846,7 +861,7 @@ const ProductsPage=()=>{
           </div>
           {funnelPending&&<CancelRing onExpire={confirmFunnelChange} onCancel={cancelFunnelChange}/>}
         </>:
-        <div style={{display:"flex",gap:3}}>{FNL.slice(0,6).map(f=><div key={f.id} onClick={()=>chFunnel(f.id,true)} title={f.label} style={{padding:"4px 10px",borderRadius:8,fontSize:10,fontWeight:600,cursor:"pointer",background:conv.funnel===f.id?f.color:f.color+"12",color:conv.funnel===f.id?"#fff":f.color,transition:"all .15s"}}>{f.icon} {f.label}</div>)}</div>}
+        <div style={{display:"flex",gap:3,alignItems:"center"}}>{FNL.slice(0,6).map(f=><div key={f.id} onClick={()=>chFunnel(f.id)} title={f.label} style={{padding:"4px 10px",borderRadius:8,fontSize:10,fontWeight:600,cursor:"pointer",background:conv.funnel===f.id?f.color:f.color+"12",color:conv.funnel===f.id?"#fff":f.color,transition:"all .15s"}}>{f.icon} {f.label}</div>)}{funnelPending&&<CancelRing onExpire={confirmFunnelChange} onCancel={cancelFunnelChange}/>}</div>}
       </div>
       {isMobile&&funnelOpen&&<div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap",animation:"slideDown .2s ease"}}>{FNL.map(f=><div key={f.id} onClick={()=>chFunnel(f.id)} style={{padding:"8px 14px",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:"pointer",background:conv.funnel===f.id?f.color:f.color+"12",color:conv.funnel===f.id?"#fff":f.color}}>{f.icon} {f.label}</div>)}</div>}
       {/* Automation alert */}
