@@ -260,7 +260,7 @@ function App(){
 
         /* Update messages for selected conv — preserve scroll */
         if(selId&&selMsgs&&selMsgs.length>0){
-          const mappedMsgs=selMsgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
+          const mappedMsgs=selMsgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text",metadata:m.metadata||null}));
           const savedScroll=chatBoxRef.current?chatBoxRef.current.scrollTop:null;
           setConvs(prev=>prev.map(x=>{if(x.id!==selId)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mappedMsgs,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));return{...x,msgs:all,_loaded:true};}));
           if(savedScroll!==null&&userScrolledUpRef.current){requestAnimationFrame(()=>{if(chatBoxRef.current)chatBoxRef.current.scrollTop=savedScroll;});}
@@ -418,7 +418,7 @@ function App(){
   const loadMsgs=(id)=>{
     if(typeof id==="string"&&id.startsWith("cmt_"))return;/* virtual comment-only conv */
     api("/api/conversations/"+id+"/messages").then(msgs=>{if(msgs&&msgs.length>0){
-      const mapped=msgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
+      const mapped=msgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text",metadata:m.metadata||null}));
       setConvs(p=>p.map(x=>{if(x.id!==id)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mapped,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));
         /* Auto-extract client data if no cd yet */
         if(isEmptyCD(x.cd)){for(let i=all.length-1;i>=0;i--){if(all[i].dir==="in"&&!all[i].type){const d=parseCD(all[i].text);if(d&&(d.surname||d.phone)){api("/api/clients",{method:"POST",body:JSON.stringify({...d,conversation_id:id})});return{...x,msgs:all,_loaded:true,cd:d,funnel:x.funnel==="new"?"processing":x.funnel};}}}}
@@ -869,7 +869,22 @@ const ProductsPage=()=>{
           :
           /* ── REGULAR / PHOTO MESSAGE ── */
           <div style={{display:"flex",justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}><div style={{position:"relative"}} onContextMenu={e=>handleMsgContext(e,msg)} onTouchStart={e=>{if(msg.dir!=="in"||msg.type)return;const t=setTimeout(()=>handleMsgContext({preventDefault:()=>{},clientX:e.touches[0].clientX,clientY:e.touches[0].clientY},msg),600);e.currentTarget._lp=t;}} onTouchEnd={e=>{if(e.currentTarget._lp)clearTimeout(e.currentTarget._lp);}}>
-            {msg.mediaUrl&&(msg.msgType==="image"||msg.mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)/i))?
+            {/* ── STORY REPLY ── */}
+            {(()=>{const storyData=msg.metadata&&(typeof msg.metadata==="string"?JSON.parse(msg.metadata):msg.metadata);const story=storyData?.reply_to_story;if(!story)return null;return <div style={{maxWidth:isMobile?280:420,borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",overflow:"hidden",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow,background:msg.dir==="out"?T.bubbleOut:T.surface}}>
+              <div style={{padding:"8px 12px",background:"rgba(138,43,226,0.12)",borderBottom:"1px solid rgba(138,43,226,0.2)",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:18}}>📷</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#8b5cf6"}}>Відповідь на вашу історію</div>
+                </div>
+                {story.url&&<div onClick={()=>window.open(story.url,"_blank")} style={{cursor:"pointer",width:44,height:44,borderRadius:8,overflow:"hidden",border:"2px solid #8b5cf6",flexShrink:0}}>
+                  <img src={story.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+                </div>}
+              </div>
+              {msg.text&&<div style={{padding:"10px 14px",color:msg.dir==="out"?"#fff":T.text,fontSize:14,lineHeight:1.45,wordBreak:"break-word"}}>{(msg.text||"").split("\n").map((l,j)=><div key={j}>{l}</div>)}</div>}
+            </div>;})()}
+            {/* ── Regular bubbles (skip if story reply already rendered) ── */}
+            {!(msg.metadata&&(typeof msg.metadata==="string"?JSON.parse(msg.metadata):msg.metadata)?.reply_to_story)&&(
+            msg.mediaUrl&&(msg.msgType==="image"||msg.mediaUrl.match(/\.(jpg|jpeg|png|gif|webp)/i))?
               <div style={{maxWidth:isMobile?260:360,borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",overflow:"hidden",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow,marginBottom:msg.text?4:0}}>
                 <img src={msg.mediaUrl} alt="" style={{width:"100%",display:"block",cursor:"pointer"}} onClick={()=>window.open(msg.mediaUrl,"_blank")}/>
                 {msg.text&&<div style={{padding:"8px 12px",background:msg.dir==="out"?T.bubbleOut:T.surface,color:msg.dir==="out"?"#fff":T.text,fontSize:13}}>{msg.text}</div>}
@@ -886,7 +901,7 @@ const ProductsPage=()=>{
               </div>
             :
               <div style={{maxWidth:isMobile?280:420,padding:"10px 14px",borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:msg.dir==="out"?T.bubbleOut:T.surface,color:msg.dir==="out"?"#fff":T.text,fontSize:14,lineHeight:1.45,wordBreak:"break-word",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow}}>{(msg.text||"").split("\n").map((l,j)=><div key={j}>{l}</div>)}</div>
-            }
+            )}
             <div style={{fontSize:10,color:T.textMuted,marginTop:2,textAlign:msg.dir==="out"?"right":"left",display:"flex",alignItems:"center",gap:4,justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}>
               {msg.time}
               {msg.parsed&&<span title="Дані витягнуто" style={{color:T.accent,fontSize:14}}>✅</span>}
