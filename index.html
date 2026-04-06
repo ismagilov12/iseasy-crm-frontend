@@ -45,7 +45,7 @@ const API="https://iseasy-crm-api.vercel.app";
 async function api(path,opts={}){try{const r=await fetch(API+path,{headers:{"Content-Type":"application/json"},...opts});if(!r.ok)console.error("API error",path,r.status);return r.json();}catch(e){console.error("API fetch error",path,e);return null;}}
 
 /* ═══ CONSTANTS ═══ */
-const FNL=[{id:"new",label:"Нові",color:"#3b82f6",icon:"💬"},{id:"processing",label:"На оформлення",color:"#f59e0b",icon:"📋"},{id:"payment",label:"На оплату",color:"#8b5cf6",icon:"💳"},{id:"confirmed",label:"Оформлено",color:"#10b981",icon:"✅"},{id:"shipped",label:"Відправлено",color:"#06b6d4",icon:"📦"},{id:"received",label:"Отримано",color:"#059669",icon:"🎉"},{id:"exchange",label:"Обмін",color:"#f97316",icon:"🔄"},{id:"repair",label:"Ремонт",color:"#dc2626",icon:"🔧"},{id:"archived",label:"Архів",color:"#9ca3af",icon:"📁"}];
+const FNL=[{id:"new",label:"Нові",color:"#3b82f6",icon:"💬"},{id:"processing",label:"На оформлення",color:"#f59e0b",icon:"📋"},{id:"payment",label:"На оплату",color:"#8b5cf6",icon:"💳"},{id:"confirmed",label:"Оформлено",color:"#10b981",icon:"✅"},{id:"shipped",label:"Відправлено",color:"#06b6d4",icon:"📦"},{id:"received",label:"Отримано",color:"#059669",icon:"🎉"},{id:"exchange",label:"Обмін",color:"#f97316",icon:"🔄"},{id:"repair",label:"Ремонт",color:"#dc2626",icon:"🔧"},{id:"closed",label:"Закрито",color:"#6b7280",icon:"✕"},{id:"archived",label:"Архів",color:"#9ca3af",icon:"📁"}];
 const ORDER_STATUSES=[{id:"new",label:"Новий",color:"#3b82f6"},{id:"production",label:"На виробництві",color:"#f59e0b"},{id:"shipped",label:"Відправлено",color:"#06b6d4"},{id:"at_post",label:"На пошті",color:"#8b5cf6"},{id:"received",label:"Отримано",color:"#10b981"},{id:"exchange",label:"Обмін",color:"#f97316"},{id:"repair",label:"Ремонт",color:"#dc2626"},{id:"refund",label:"Повернення",color:"#ef4444"},{id:"archived",label:"Архів",color:"#9ca3af"}];
 const CHANNELS=[{id:"all",label:"Усі",icon:"💬"},{id:"instagram",label:"Інста",icon:"📸"},{id:"telegram",label:"Telegram",icon:"✈️"},{id:"viber",label:"Viber",icon:"💜"},{id:"site",label:"Сайт",icon:"🌐"}];
 const QR=[{id:1,t:"Привітання",tx:"Привіт! Дякуємо за звернення до IS EASY!"},{id:2,t:"Розміри",tx:"Розміри від 36 до 41. Який вас цікавить?"},{id:3,t:"Доставка",tx:"Доставка НП по Україні, 1-2 дні."},{id:4,t:"Оплата",tx:"Передплата на карту або наклад."},{id:5,t:"Немає",tx:"Цієї моделі немає в наявності."}];
@@ -131,7 +131,7 @@ function App(){
   const[products,setProducts]=useState(INIT_PR);
   const[input,setInput]=useState("");const[showQR,setShowQR]=useState(false);const[showProds,setShowProds]=useState(false);
   const[prodModal,setProdModal]=useState(null);const[selSize,setSelSize]=useState(null);const[pays]=useState(IPAYS);const[matched,setMatched]=useState(new Set());
-  const[notif,setNotif]=useState(null);const[clOpen,setClOpen]=useState(true);const[editPr,setEditPr]=useState(false);const[prVal,setPrVal]=useState("");const[payOpen,setPayOpen]=useState(false);
+  const[notif,setNotif]=useState(null);const[clOpen,setClOpen]=useState(false);const[editPr,setEditPr]=useState(false);const[prVal,setPrVal]=useState("");const[payOpen,setPayOpen]=useState(false);
   const[sosOpen,setSosOpen]=useState(false);const[sosIn,setSosIn]=useState("");const[sosM,setSosM]=useState([{id:0,role:"ai",text:"Привіт! Я AI-асистент IS EASY CRM."}]);const[sosTyp,setSosTyp]=useState(false);
   const[repair,setRepair]=useState(false);const[pins,setPins]=useState([]);const[pinInput,setPinInput]=useState(null);const[pinText,setPinText]=useState("");
   const[page,setPage]=useState("crm");const[settingsTab,setSettingsTab]=useState("integrations");
@@ -156,7 +156,7 @@ function App(){
   const sosEnd=useRef(null);const ce=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
-  useEffect(()=>{const t=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),150);return()=>clearTimeout(t);},[selId,conv?.msgs?.length]);
+  useEffect(()=>{const t1=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),50);const t2=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),300);const t3=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),800);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);};},[selId,conv?.msgs?.length]);
   useEffect(()=>{setTimeout(()=>sosEnd.current?.scrollIntoView({behavior:"smooth"}),60);},[sosM.length]);
   const noti=useCallback(m=>{setNotif(m);setTimeout(()=>setNotif(null),2500);},[]);
 
@@ -359,9 +359,21 @@ function App(){
       const mapped=msgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
       setConvs(p=>p.map(x=>{if(x.id!==id)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mapped,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));return{...x,msgs:all,_loaded:true};}));}});
   };
-  const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(true);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile)setMobileView("chat");
+  const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(false);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile)setMobileView("chat");
     api("/api/conversations/"+id+"/read",{method:"POST"});
     loadMsgs(id);
+  };
+  const refreshAll=async()=>{
+    try{const[convsRaw,cmts]=await Promise.all([api("/api/conversations"),api("/api/comments")]);
+    if(selId&&typeof selId==="number")loadMsgs(selId);
+    if(convsRaw&&convsRaw.length>0){const pMap={};products.forEach(p=>{pMap[p.id]=p;});
+      const mapped=convsRaw.map(c=>({id:c.id,username:c.instagram_username||c.username||"",name:c.client_name||c.name||"",funnel:c.funnel||"new",channel:c.channel||"instagram",instagram_user_id:c.instagram_user_id||"",lastMsg:c.last_message_text||"",lastTime:c.last_message_at?new Date(c.last_message_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):"",lastTs:c.last_message_at?new Date(c.last_message_at).getTime():0,unread:c.unread_count||0,lastDir:c.last_message_dir||"in",msgs:[],cd:c.cd||c.client_data||null,orders:(c.orders||[]).map(o=>({...o,product:o.product_id?pMap[o.product_id]:o.product}))}));
+      if(cmts&&cmts.length>0){setComments(cmts);const byIgId={};mapped.forEach(c=>{if(c.instagram_user_id)byIgId[c.instagram_user_id]=c;});const virtuals=[];
+        cmts.filter(cm=>!cm.is_reply&&cm.instagram_user_id!=="17841465693388986").forEach(cm=>{let cv=byIgId[cm.instagram_user_id];if(!cv){cv={id:"cmt_"+cm.instagram_user_id,username:cm.username||"",name:cm.username||"User",funnel:"new",channel:"instagram",instagram_user_id:cm.instagram_user_id,lastMsg:"",lastTime:"",lastTs:0,unread:0,lastDir:"in",msgs:[],cd:null,orders:[],isVirtual:true};byIgId[cm.instagram_user_id]=cv;virtuals.push(cv);}const cmtTime=cm.created_at?new Date(cm.created_at):new Date();cv.msgs.push({id:"cmt_"+cm.id,dir:"in",text:cm.text||"",time:cmtTime.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),type:"comment",mediaId:cm.instagram_media_id||"",commentId:cm.instagram_comment_id||"",username:cm.username||"",igUserId:cm.instagram_user_id||""});const ts=cmtTime.getTime();if(ts>cv.lastTs){cv.lastTs=ts;cv.lastTime=cmtTime.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"});cv.lastMsg="📸 "+cm.text.substring(0,40);cv.lastDir="in";}});
+        const allConvs=[...mapped,...virtuals].sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
+        setConvs(prev=>allConvs.map(nc=>{const old=prev.find(p=>p.id===nc.id);return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread};}));
+      }else{mapped.sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));setConvs(prev=>mapped.map(nc=>{const old=prev.find(p=>p.id===nc.id);return{...nc,msgs:old&&old.msgs&&old.msgs.length>0?old.msgs:nc.msgs,_loaded:old?._loaded,unread:nc.id===selId?0:nc.unread};}));}
+    }noti("Оновлено!");}catch(e){console.error("Refresh error",e);noti("Помилка оновлення");}
   };
 
   const handleTouchStart=(e)=>{touchStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};
@@ -599,7 +611,7 @@ const ProductsPage=()=>{
       {/* CLIENT */}
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Клієнт {conv.cd&&<span onClick={()=>setEditClient(conv.cd)} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>✎ Редагувати</span>}</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div><div style={{fontSize:15,fontWeight:700}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div></div>
+        <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div style={{flex:1}}><div style={{fontSize:15,fontWeight:700}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div><span style={{fontSize:12,color:T.textSec,transition:"transform .2s",transform:clOpen?"rotate(180deg)":"rotate(0)"}}>{"\u25BC"}</span></div>
         {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13,display:"grid",gridTemplateColumns:"auto 1fr",gap:"6px 12px"}}>
           {[["Тел",conv.cd.phone||"","phone"],["Місто",conv.cd.city||"","city"],["Відд.",conv.cd.branch?"№"+conv.cd.branch:"","branch"],["Інста","@"+(conv.username||"")]].map(([k,v,f],i)=>
             <React.Fragment key={i}><span style={{color:T.textSec,fontWeight:500}}>{k}</span>{f?<input value={(v||"").replace("№","")} onChange={e=>updateClient(f,e.target.value)} style={{border:"none",borderBottom:`1px solid ${T.border}`,fontSize:13,outline:"none",padding:"2px 0",background:"transparent"}}/>:<span>{v}</span>}</React.Fragment>)}
@@ -676,10 +688,10 @@ const ProductsPage=()=>{
     <div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`}}>
       <div style={{display:"flex",gap:8,marginBottom:8}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Пошук..." style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
-        <button onClick={()=>noti("Чати оновлено!")} style={{padding:"8px 12px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,cursor:"pointer"}} title="Оновити">🔄</button>
+        <button onClick={refreshAll} style={{padding:"8px 12px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,cursor:"pointer"}} title="Оновити">🔄</button>
       </div>
       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-        {[{id:"all",l:"Усі",c:T.text,n:convs.length},{id:"unanswered",l:"❗",c:T.danger,n:unanswered},...FNL.slice(0,5).map(f=>({id:f.id,l:f.icon,c:f.color,n:counts[f.id]||0}))].map(f=>
+        {[{id:"all",l:"Усі",c:T.text,n:convs.length},{id:"unanswered",l:"❗",c:T.danger,n:unanswered},...FNL.slice(0,6).map(f=>({id:f.id,l:f.icon,c:f.color,n:counts[f.id]||0}))].map(f=>
           <div key={f.id} onClick={()=>setFilter(f.id)} style={{padding:"4px 8px",borderRadius:10,fontSize:10,fontWeight:600,cursor:"pointer",background:filter===f.id?f.c:f.c+"12",color:filter===f.id?"#fff":f.c,transition:"all .15s"}}>{f.l} {f.n>0?f.n:""}</div>)}
       </div>
     </div>
@@ -716,7 +728,7 @@ const ProductsPage=()=>{
           </div>
           {funnelPending&&<CancelRing onExpire={confirmFunnelChange} onCancel={cancelFunnelChange}/>}
         </>:
-        <div style={{display:"flex",gap:3}}>{FNL.slice(0,5).map(f=><div key={f.id} onClick={()=>chFunnel(f.id,true)} title={f.label} style={{padding:"4px 10px",borderRadius:8,fontSize:10,fontWeight:600,cursor:"pointer",background:conv.funnel===f.id?f.color:f.color+"12",color:conv.funnel===f.id?"#fff":f.color,transition:"all .15s"}}>{f.icon} {f.label}</div>)}</div>}
+        <div style={{display:"flex",gap:3}}>{FNL.slice(0,6).map(f=><div key={f.id} onClick={()=>chFunnel(f.id,true)} title={f.label} style={{padding:"4px 10px",borderRadius:8,fontSize:10,fontWeight:600,cursor:"pointer",background:conv.funnel===f.id?f.color:f.color+"12",color:conv.funnel===f.id?"#fff":f.color,transition:"all .15s"}}>{f.icon} {f.label}</div>)}</div>}
       </div>
       {isMobile&&funnelOpen&&<div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"10px 14px",display:"flex",gap:6,flexWrap:"wrap",animation:"slideDown .2s ease"}}>{FNL.map(f=><div key={f.id} onClick={()=>chFunnel(f.id)} style={{padding:"8px 14px",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:"pointer",background:conv.funnel===f.id?f.color:f.color+"12",color:conv.funnel===f.id?"#fff":f.color}}>{f.icon} {f.label}</div>)}</div>}
       {/* Automation alert */}
@@ -738,7 +750,7 @@ const ProductsPage=()=>{
               {/* Post preview */}
               {hasMedia&&<div style={{position:"relative"}}>
                 {media.media_type==="VIDEO"?
-                  <video src={media.media_url} controls style={{width:"100%",maxHeight:240,display:"block",objectFit:"cover"}}/>
+                  <video src={media.media_url} controls preload="none" style={{width:"100%",maxHeight:240,display:"block",objectFit:"cover"}}/>
                 :
                   <img src={media.media_url} alt="" style={{width:"100%",maxHeight:240,display:"block",objectFit:"cover",cursor:"pointer"}} onClick={()=>media.permalink&&window.open(media.permalink,"_blank")}/>
                 }
@@ -808,12 +820,10 @@ const ProductsPage=()=>{
             <div key={i} onClick={fn} style={{padding:"5px 12px",border:`1px solid ${a?T.primary:T.border}`,borderRadius:20,fontSize:12,cursor:"pointer",background:a?T.primary:T.surface,color:a?"#fff":T.textSec,display:"flex",alignItems:"center",gap:4,fontWeight:500,transition:"all .15s"}}>{ic} {lb}</div>)}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-          <textarea rows={1} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(attachImg){sendWithPhoto(input);}else{send(input);}}}} placeholder="Написати..." style={{flex:1,padding:"10px 16px",border:`1px solid ${T.border}`,borderRadius:22,fontSize:14,outline:"none",resize:"none",lineHeight:1.4,maxHeight:80,background:T.surfaceAlt}}/>
-          <button onClick={toggleVoice} style={{width:40,height:40,borderRadius:"50%",background:recording?T.danger:T.surfaceAlt,color:recording?"#fff":T.textSec,border:`1px solid ${recording?T.danger:T.border}`,cursor:"pointer",fontSize:16,flexShrink:0}} title="Голосовий ввід">{recording?"⏹":"🎤"}</button>
+          <input type="text" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(attachImg){sendWithPhoto(input);}else{send(input);}}}} placeholder="Написати..." style={{flex:1,padding:"10px 16px",border:`1px solid ${T.border}`,borderRadius:22,fontSize:14,outline:"none",lineHeight:1.4,background:T.surfaceAlt}}/>
           <button onClick={()=>{if(attachImg){sendWithPhoto(input);}else{send(input);}}} style={{width:40,height:40,borderRadius:"50%",background:T.primary,color:"#fff",border:"none",cursor:"pointer",fontSize:16,flexShrink:0,boxShadow:`0 2px 8px ${T.primary}40`}}>➤</button>
         </div>
       </div>
-      {isMobile&&<button onClick={()=>setShowMobileClientCard(true)} style={{position:"fixed",bottom:40,right:20,width:60,height:60,borderRadius:"50%",background:T.primary,color:"#fff",border:"none",fontSize:28,cursor:"pointer",zIndex:50,boxShadow:`0 4px 12px ${T.primary}40`}}>+</button>}
     </>:<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.textSec,flexDirection:"column",gap:10}}><span style={{fontSize:52,opacity:.6}}>💬</span><span style={{fontWeight:500}}>Оберіть чат</span></div>}
   </div>;
 
