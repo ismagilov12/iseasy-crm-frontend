@@ -608,7 +608,7 @@ function App(){
     useEffect(()=>{
       (async()=>{
         const surname=(conv.cd?.surname||conv.name||"").trim();
-        const data=await api("/api/payments/suggest?client_name="+encodeURIComponent(surname)+"&conversation_id="+(conv.id||0));
+        const data=await api("/api/payments/suggest?client_name="+encodeURIComponent(surname)+"&conversation_id="+(conv.id||0)+"&days=3");
         if(data&&Array.isArray(data))setPays(data);
         setLoading(false);
       })();
@@ -628,14 +628,15 @@ function App(){
         </div>
         <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
       </div>
-      {isSel&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder.id)}} style={{padding:"5px 12px",background:accent?T.accent:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Підтвердити</button>}
+      {isSel&&!p.is_matched&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder?.id)}} style={{padding:"5px 12px",background:accent?T.accent:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Підтвердити</button>}
+      {isSel&&p.is_matched&&<span style={{fontSize:10,color:T.accent,fontWeight:700,whiteSpace:"nowrap"}}>✅ Підтверджено</span>}
     </div>};
     return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`}}>
       {/* Search */}
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Пошук по імені або сумі..." style={{width:"100%",padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none",background:T.surface,marginBottom:8}}/>
       <div style={{maxHeight:300,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
         {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
-          {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає незіставлених оплат</div>}
+          {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає оплат за останні 3 дні</div>}
           {!search&&suggested.length>0&&<div style={{marginBottom:6}}>
             <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>✨ Рекомендовані збіги:</div>
             {suggested.map(p=><PayRow key={p.id} p={p} accent/>)}
@@ -862,12 +863,12 @@ const ProductsPage=()=>{
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5}}>Оплата</div>
-          {curOrder&&curOrder.paid<curOrder.total&&<button onClick={()=>setPayOpen(!payOpen)} style={{padding:"4px 10px",background:payOpen?T.primary:T.surfaceAlt,color:payOpen?"#fff":T.text,border:`1px solid ${payOpen?T.primary:T.border}`,borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer"}}>
-            {payOpen?"▲ Згорнути":"💰 Додати оплату"}
-          </button>}
+          <button onClick={()=>setPayOpen(!payOpen)} style={{padding:"4px 10px",background:payOpen?T.primary:T.surfaceAlt,color:payOpen?"#fff":T.text,border:`1px solid ${payOpen?T.primary:T.border}`,borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer"}}>
+            {payOpen?"▲ Згорнути":"💰 Оплати"}
+          </button>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress bar — only if order exists */}
         {curOrder&&<div style={{marginBottom:10,padding:"8px 12px",background:curOrder.paid>=curOrder.total?T.accentLight:T.warnLight,borderRadius:10,fontSize:13}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><span>Оплачено:</span><span style={{fontWeight:700}}>{curOrder.paid||0}/{curOrder.total} грн</span></div>
           <div style={{background:T.border,borderRadius:4,height:6,marginTop:6,overflow:"hidden"}}><div style={{background:curOrder.paid>=curOrder.total?T.accent:T.warn,height:"100%",width:Math.min(100,((curOrder.paid||0)/curOrder.total)*100)+"%",borderRadius:4,transition:"width .3s"}}/></div>
@@ -882,15 +883,17 @@ const ProductsPage=()=>{
           </div>})}
         </div>}
 
-        {/* Payment picker — dropdown with fuzzy matching */}
-        {payOpen&&curOrder&&curOrder.paid<curOrder.total&&<PaymentPicker conv={conv} curOrder={curOrder} onMatch={async(payId,ordId)=>{
-          const r=await api("/api/payments/"+payId+"/match",{method:"POST",body:JSON.stringify({order_id:ordId})});
+        {/* Payment picker — all recent payments */}
+        {payOpen&&<PaymentPicker conv={conv} curOrder={curOrder} onMatch={async(payId,ordId)=>{
+          const matchBody=ordId?{order_id:ordId}:{conversation_id:selId};
+          const r=await api("/api/payments/"+payId+"/match",{method:"POST",body:JSON.stringify(matchBody)});
           if(r&&r.status==="ok"){
-            noti(r.fully_paid?"Оплату підтверджено повністю!":"Оплату додано!");
+            if(r.fully_paid)noti("Оплату підтверджено повністю!");
+            else if(r.order_id)noti("Оплату додано до замовлення!");
+            else noti("Оплату прив'язано до клієнта!");
             setUnmatchedPays(prev=>prev.filter(x=>x.id!==payId));
-            updateOrder(ordId,{paid:r.new_paid,status:r.fully_paid?"confirmed":curOrder.status});
+            if(ordId&&r.new_paid!=null)updateOrder(ordId,{paid:r.new_paid,status:r.fully_paid?"confirmed":(curOrder?curOrder.status:"payment")});
             setPayOpen(false);
-            /* Refresh matched payments */
             const mp=await api("/api/payments/by-conversation/"+selId);
             if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===selId?{...c,_matchedPays:mp}:c));
           }else noti("Помилка");
