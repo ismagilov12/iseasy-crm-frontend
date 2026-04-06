@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
 <title>IS EASY CRM</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;height:100dvh;height:-webkit-fill-available}
 body{font-family:'Inter',sans-serif;background:#f0ede6;color:#1a1a2e;font-size:14px;overflow:hidden;-webkit-user-select:none;user-select:none;letter-spacing:-.01em;padding-bottom:env(safe-area-inset-bottom,0)}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#c5c0b6;border-radius:10px}
 input,textarea,select{font-family:'Inter',sans-serif;-webkit-user-select:text;user-select:text;touch-action:manipulation}
@@ -114,8 +115,11 @@ const T={
 function parseCD(t){if(!t||t.length<10)return null;t=t.replace(/\s+/g," ").trim();
   const phM=t.match(/(?:\+?38)?[\s-]?0[\s-]?\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}|(?:\+?38)?[\s-]?0\d{9}/);const phone=phM?phM[0].replace(/[\s-]/g,""):"";
   const brRe=/(?:від(?:ділення|діл)|отделение|отдел|№)\s*(\d{1,4})|(\d{1,4})\s*(?:від(?:ділення|діл)|отделение|відд)/i;const brM=t.match(brRe);const branch=brM?(brM[1]||brM[2]):"";
-  const cities=["Київ","Киев","Харків","Харьков","Одеса","Одесса","Дніпро","Днепр","Львів","Львов","Запоріжжя","Полтава","Вінниця","Чернігів","Черкаси","Суми","Рівне","Житомир","Тернопіль","Ужгород","Хмельницький","Кропивницький","Луцьк","Маріуполь"];
-  const ciRe=new RegExp("("+cities.join("|")+")","i");const ciM=t.match(ciRe);const city=ciM?ciM[1]:"";
+  const cities=["Київ","Киев","Харків","Харьков","Одеса","Одесса","Дніпро","Днепр","Львів","Львов","Запоріжжя","Запорожье","Полтава","Вінниця","Винница","Чернігів","Чернигов","Черкаси","Черкассы","Суми","Сумы","Рівне","Ровно","Житомир","Тернопіль","Тернополь","Ужгород","Хмельницький","Хмельницкий","Кропивницький","Кировоград","Луцьк","Луцк","Маріуполь","Мариуполь","Миколаїв","Николаев","Херсон","Івано-Франківськ","Ивано-Франковск","Чернівці","Черновцы","Біла Церква","Белая Церковь","Кременчук","Кременчуг","Мелітополь","Мелитополь","Нікополь","Бердянськ","Павлоград","Камянське","Каменское","Олександрія","Конотоп","Коростень","Ніжин","Шостка","Бровари","Бориспіль","Борисполь","Буча","Ірпінь","Ірпень","Вишневе","Обухів","Фастів","Васильків","Боярка","Софіївська Борщагівка","Петропавлівська Борщагівка","Гостомель","Коцюбинське","Вишгород","Славутич","Сміла","Умань","Новомосковськ","Покровськ","Краматорськ","Слов'янськ","Костянтинівка","Бахмут","Лозова","Ізмаїл","Мукачево","Стрий","Дрогобич","Коломия","Калуш","Нововолинськ","Ковель","Шепетівка","Старокостянтинів","Прилуки","Лубни","Олешки","Енергодар","Токмак","Козятин","Жмеринка"];
+  const ciRe=new RegExp("("+cities.join("|")+")","i");const ciM=t.match(ciRe);
+  /* Also try "м." / "г." / "місто" prefix pattern for unlisted cities */
+  let city=ciM?ciM[1]:"";
+  if(!city){const mpM=t.match(/(?:м\.|г\.|місто|город)\s*([А-ЯІЇЄҐа-яіїєґ\s-]{2,20}?)(?:\s|,|$)/i);if(mpM)city=mpM[1].trim();}
   let nt=t;if(phM)nt=nt.replace(phM[0],"");if(brM)nt=nt.replace(brRe,"");if(ciM)nt=nt.replace(ciRe,"");nt=nt.replace(/від(?:ділення|діл)|отделение|отдел|№/gi,"").replace(/\s+/g," ").trim();
   const nmM=nt.match(/([А-ЯІЇЄҐа-яіїєґ]{2,})\s+([А-ЯІЇЄҐа-яіїєґ]{2,})/);let surname="",name="";if(nmM){surname=nmM[1];name=nmM[2];}
   if(!((surname&&name)||phone||(city&&branch)))return null;return{surname,name,city,branch,phone};}
@@ -326,8 +330,13 @@ function App(){
   const mkClient=d=>{setConvs(p=>p.map(c=>{if(c.id!==selId)return c;const newMsgs=c.msgs.map(m=>{if(m.dir==="in"&&parseCD(m.text))return{...m,parsed:true};return m;});return{...c,cd:d,funnel:c.funnel==="new"?"processing":c.funnel,msgs:newMsgs};}));noti("Клієнта створено!");
     api("/api/clients",{method:"POST",body:JSON.stringify({...d,conversation_id:selId})});
     if(conv?.funnel==="new")api("/api/conversations/"+selId,{method:"PATCH",body:JSON.stringify({funnel:"processing"})});};
-  const updateClient=(field,val)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,cd:{...c.cd,[field]:val}}:c));
-    if(conv?.cd?.id)api("/api/clients/"+conv.cd.id,{method:"PATCH",body:JSON.stringify({[field]:val})});};
+  const updateClient=(field,val)=>{
+    const newCd={...conv?.cd,[field]:val};
+    setConvs(p=>p.map(c=>c.id===selId?{...c,cd:newCd}:c));
+    if(conv?.cd?.id){api("/api/clients/"+conv.cd.id,{method:"PATCH",body:JSON.stringify({[field==="branch"?"np_branch":field]:val})});}
+    /* Also update conversation's client_data jsonb for sync */
+    api("/api/conversations/"+selId,{method:"PATCH",body:JSON.stringify({client_data:newCd})});
+  };
   const chFunnel=(f,instant)=>{if(isMobile&&!instant){const old=conv.funnel;setFunnelPending({newFunnel:f,oldFunnel:old});setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:f}:c));setFunnelOpen(false);}else{setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:f}:c));}
     api("/api/conversations/"+selId,{method:"PATCH",body:JSON.stringify({funnel:f})});};
   const cancelFunnelChange=()=>{if(funnelPending){setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:funnelPending.oldFunnel}:c));setFunnelPending(null);noti("Скасовано");}};
@@ -591,25 +600,27 @@ function App(){
       const matchCat=prodPickerCat==="all"||p.category===prodPickerCat;
       return matchSearch&&matchCat;
     });
-    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.3)",display:"flex",alignItems:"flex-end",zIndex:100}}>
-      <div style={{width:"100%",maxHeight:"80vh",background:T.surface,borderRadius:`${T.cardRadius}px ${T.cardRadius}px 0 0`,display:"flex",flexDirection:"column",animation:"slideUp .2s ease"}}>
-        <div style={{padding:"14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10}}>
-          <input type="text" placeholder="Пошук..." value={prodPickerSearch} onChange={e=>setProdPickerSearch(e.target.value)} style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none"}}/>
-          <button onClick={onClose} style={{padding:"8px 12px",background:T.dangerLight,color:T.danger,border:"none",borderRadius:T.btnRadius,cursor:"pointer",fontWeight:600}}>✕</button>
+    return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",zIndex:200}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{width:isMobile?"100%":420,maxHeight:isMobile?"75vh":"70vh",background:T.surface,borderRadius:isMobile?`16px 16px 0 0`:16,display:"flex",flexDirection:"column",animation:isMobile?"slideUp .2s ease":"fadeIn .2s ease",boxShadow:"0 8px 32px rgba(0,0,0,.2)"}}>
+        <div style={{padding:"10px 12px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8}}>
+          <input type="text" placeholder="Пошук..." value={prodPickerSearch} onChange={e=>setProdPickerSearch(e.target.value)} style={{flex:1,padding:"7px 10px",border:`1px solid ${T.border}`,borderRadius:10,fontSize:14,outline:"none"}}/>
+          <select value={prodPickerCat} onChange={e=>setProdPickerCat(e.target.value)} style={{padding:"7px 6px",border:`1px solid ${T.border}`,borderRadius:10,fontSize:12,outline:"none",maxWidth:100}}>
+            <option value="all">Всі</option>
+            {categories.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <button onClick={onClose} style={{padding:"6px 10px",background:T.dangerLight,color:T.danger,border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14}}>✕</button>
         </div>
-        <select value={prodPickerCat} onChange={e=>setProdPickerCat(e.target.value)} style={{margin:"8px 14px 0 14px",padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none"}}>
-          <option value="all">Всі категорії</option>
-          {categories.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
-        <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
-          {filtered.map(p=>(<div key={p.id} onClick={()=>onSelect(p)} style={{background:T.surfaceAlt,borderRadius:T.cardRadius,cursor:"pointer",border:`2px solid ${T.border}`,transition:"all .15s",display:"flex",alignItems:"center",gap:10,padding:8}}>
-            <div style={{width:50,height:50,borderRadius:10,overflow:"hidden",flexShrink:0,background:T.surface,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{p.img?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"👟"}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.primary}}>{p.sku}</div>
-              <div style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-              <div style={{fontSize:12,fontWeight:700}}>{p.price}₴</div>
-            </div>
-          </div>))}
+        <div style={{flex:1,overflowY:"auto",padding:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+            {filtered.map(p=>(<div key={p.id} onClick={()=>onSelect(p)} style={{background:T.surfaceAlt,borderRadius:10,cursor:"pointer",border:`2px solid ${T.border}`,transition:"all .15s",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+              <div style={{width:"100%",aspectRatio:"1",background:T.surface,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,overflow:"hidden"}}>{p.img?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.parentNode.innerText="👟";}}/>:"👟"}</div>
+              <div style={{padding:"4px 6px"}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.primary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.sku}</div>
+                <div style={{fontSize:10,fontWeight:600}}>{p.price}₴</div>
+              </div>
+            </div>))}
+          </div>
+          {filtered.length===0&&<div style={{textAlign:"center",padding:20,color:T.textSec,fontSize:13}}>Товарів не знайдено</div>}
         </div>
       </div>
     </div>;
@@ -1013,7 +1024,7 @@ const ProductsPage=()=>{
   if(page==="comments"){setPage("crm");return null;}
 
   /* ═══ CRM PAGE ═══ */
-  return <div style={{display:"flex",flexDirection:"column",height:"100vh",overflow:"hidden",position:"relative",background:T.bg}} className={repair?"repair-mode":""} onContextMenu={handleRepairClick}>
+  return <div style={{display:"flex",flexDirection:"column",height:"100dvh",maxHeight:"-webkit-fill-available",overflow:"hidden",position:"relative",background:T.bg}} className={repair?"repair-mode":""} onContextMenu={handleRepairClick}>
     {!isMobile&&Header()}
     {MobileSidebar()}
     {notif&&<div style={{position:"fixed",top:isMobile?10:64,left:"50%",transform:"translateX(-50%)",background:T.text,color:"#fff",padding:"12px 28px",borderRadius:14,fontSize:14,fontWeight:600,zIndex:200,boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>{notif}</div>}
