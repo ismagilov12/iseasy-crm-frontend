@@ -21,6 +21,8 @@ input[type="text"],input[type="number"],input[type="tel"],input[type="date"],tex
 @keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideInLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
 @keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes sidebarIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+@keyframes sidebarOut{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 .repair-mode{filter:grayscale(1)!important;transition:filter .3s}
 .repair-pin{position:absolute;width:24px;height:24px;background:#eab308;border:2px solid #854d0e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#854d0e;cursor:pointer;z-index:50;transform:translate(-50%,-50%);animation:repairGlow 2s infinite}
 table{width:100%;border-collapse:separate;border-spacing:0}th,td{text-align:left;padding:10px 14px;border-bottom:1px solid #eae7e0;font-size:13px}th{font-weight:600;color:#8a8578;font-size:11px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:#faf8f5;z-index:2}
@@ -142,6 +144,7 @@ function App(){
   const[autos,setAutos]=useState(DEFAULT_AUTOMATIONS);const[autoInput,setAutoInput]=useState("");
   const[prodReq,setProdReq]=useState(null);const[prodDate,setProdDate]=useState("");
   const[mobileView,setMobileView]=useState("list");const[funnelOpen,setFunnelOpen]=useState(false);const[funnelPending,setFunnelPending]=useState(null);const[slideDir,setSlideDir]=useState("right");/* "left" or "right" for animation direction */
+  const[sidebarOpen,setSidebarOpen]=useState(false);/* mobile sidebar menu */
   const[menuOpen,setMenuOpen]=useState(false);
   const[editClient,setEditClient]=useState(null);
   const[orderTypeModal,setOrderTypeModal]=useState(null);
@@ -176,8 +179,15 @@ function App(){
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
   /* Detect if user scrolled up manually */
   useEffect(()=>{const el=chatBoxRef.current;if(!el)return;const onScroll=()=>{const atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<80;userScrolledUpRef.current=!atBottom;};el.addEventListener("scroll",onScroll,{passive:true});return()=>el.removeEventListener("scroll",onScroll);},[selId]);
-  /* Scroll to bottom only on conversation change or genuinely new messages */
-  useEffect(()=>{const curLen=conv?.msgs?.length||0;const convChanged=selId!==prevSelId.current;const newMsgs=curLen>prevMsgLen.current;if(convChanged){userScrolledUpRef.current=false;prevSelId.current=selId;prevMsgLen.current=curLen;scrollToBottom(true);const t=setTimeout(()=>scrollToBottom(true),200);return()=>clearTimeout(t);}if(newMsgs){const lastMsg=conv?.msgs?.[conv.msgs.length-1];const isOutgoing=lastMsg&&lastMsg.dir==="out";if(isOutgoing)userScrolledUpRef.current=false;prevMsgLen.current=curLen;scrollToBottom();const t=setTimeout(scrollToBottom,200);return()=>clearTimeout(t);}},[selId,conv?.msgs?.length]);
+  /* Scroll to bottom ONLY on: conv change, or truly new last message ID */
+  const lastMsgIdRef=useRef(null);
+  useEffect(()=>{
+    const lastMsg=conv?.msgs?.[conv?.msgs?.length-1];const lastId=lastMsg?.id||null;
+    const convChanged=selId!==prevSelId.current;
+    const newMsg=lastId&&lastId!==lastMsgIdRef.current;
+    if(convChanged){userScrolledUpRef.current=false;prevSelId.current=selId;lastMsgIdRef.current=lastId;scrollToBottom(true);const t=setTimeout(()=>scrollToBottom(true),200);return()=>clearTimeout(t);}
+    if(newMsg){const isOut=lastMsg&&lastMsg.dir==="out";if(isOut)userScrolledUpRef.current=false;lastMsgIdRef.current=lastId;scrollToBottom();const t=setTimeout(scrollToBottom,200);return()=>clearTimeout(t);}
+  },[selId,conv?.msgs?.[conv?.msgs?.length-1]?.id]);
   useEffect(()=>{setTimeout(()=>sosEnd.current?.scrollIntoView({behavior:"smooth"}),60);},[sosM.length]);
   const noti=useCallback(m=>{setNotif(m);setTimeout(()=>setNotif(null),2500);},[]);
 
@@ -432,21 +442,24 @@ function App(){
   };
 
   const handleTouchStart=(e)=>{touchStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};
-  const handleTouchEnd=(e)=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;const dy=e.changedTouches[0].clientY-touchStart.current.y;if(Math.abs(dx)<50||Math.abs(dy)>Math.abs(dx))return;
-    if(mobileView==="chat"){if(dx<-50){setSlideDir("right");setMobileView("client");}if(dx>50){setSlideDir("left");setMobileView("list");}}else if(mobileView==="client"&&dx>50){setSlideDir("left");setMobileView("chat");}touchStart.current=null;};
+  const handleTouchEnd=(e)=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;const dy=e.changedTouches[0].clientY-touchStart.current.y;if(Math.abs(dx)<50||Math.abs(dy)>Math.abs(dx)){touchStart.current=null;return;}
+    if(mobileView==="list"){if(dx>60)setSidebarOpen(true);}
+    else if(mobileView==="chat"){if(dx<-50){setSlideDir("right");setMobileView("client");}if(dx>50){setSlideDir("left");setMobileView("list");}}
+    else if(mobileView==="client"&&dx>50){setSlideDir("left");setMobileView("chat");}
+    touchStart.current=null;};
 
   const handleProductionConfirm=()=>{if(!prodReq||!prodDate)return;const c=prodReq.conv;const diff=Math.floor((new Date(prodDate)-new Date(c.orders[0].date))/(1000*60*60*24));
     let msg="Доброго дня! Ваше замовлення буде готове "+prodDate+".";if(diff>9)msg+="\n\nВибачте за затримку! Промокод: SORRY10 (-10%)";msg+="\n\nДякуємо за терпіння! ❤️";
     setConvs(p=>p.map(x=>x.id===c.id?{...x,msgs:[...x.msgs,{id:Date.now(),dir:"out",text:msg,time:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}],lastMsg:msg.substring(0,50)+"...",lastDir:"out"}:x));setProdReq(null);setProdDate("");noti("Відповідь відправлена!");};
 
   /* ═══ HEADER ═══ */
-  const Header=()=><div className="glass" style={{height:56,display:"flex",alignItems:"center",padding:"0 18px",gap:10,flexShrink:0,zIndex:100,position:"relative",borderBottom:`1px solid ${T.border}`}}>
+  const Header=()=><div className="glass" style={{height:isMobile?0:56,display:isMobile?"none":"flex",alignItems:"center",padding:"0 18px",gap:10,flexShrink:0,zIndex:100,position:"relative",borderBottom:`1px solid ${T.border}`}}>
     <div style={{fontSize:17,fontWeight:800,color:T.text,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setMenuOpen(!menuOpen)}>
       IS EASY <span style={{fontSize:9,background:T.primary,color:"#fff",padding:"3px 8px",borderRadius:6,fontWeight:700,letterSpacing:.5}}>CRM</span>
       <span style={{fontSize:10,color:T.textSec,transition:"transform .2s",transform:menuOpen?"rotate(180deg)":"rotate(0)"}}>▼</span>
     </div>
     {menuOpen&&<div style={{position:"absolute",top:52,left:14,background:T.surface,borderRadius:T.cardRadius,boxShadow:T.shadowLg,zIndex:350,minWidth:200,overflow:"hidden",border:`1px solid ${T.border}`,animation:"slideDown .2s ease"}} onClick={()=>setMenuOpen(false)}>
-      {[["crm","💬 Чати"],["comments","💬 Коментарі"],["orders","📦 Замовлення"],["products","🏷️ Товар"],["analytics","📊 Аналітика"],["settings","⚙️ Налаштування"]].map(([id,lb])=>
+      {[["crm","💬 Чати"],["orders","📦 Замовлення"],["products","🏷️ Товар"],["analytics","📊 Аналітика"],["settings","⚙️ Налаштування"]].map(([id,lb])=>
         <div key={id} onClick={()=>setPage(id)} style={{padding:"12px 18px",fontSize:14,cursor:"pointer",borderBottom:`1px solid ${T.borderLight}`,fontWeight:page===id?700:400,background:page===id?T.surfaceAlt:T.surface,color:page===id?T.primary:T.text,transition:"background .15s"}}>{lb}</div>)}
     </div>}
     <div style={{flex:1}}/>
@@ -454,6 +467,23 @@ function App(){
     <div onClick={()=>{setRepair(!repair);if(repair)setPinInput(null);}} style={{width:36,height:36,borderRadius:12,background:repair?"#eab308":T.surfaceAlt,border:`1px solid ${repair?"#eab308":T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>🔧</div>
     <div onClick={()=>{setPage("settings");setMenuOpen(false);}} style={{width:36,height:36,borderRadius:12,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>⚙️</div>
   </div>;
+
+  /* ═══ MOBILE SIDEBAR ═══ */
+  const MobileSidebar=()=>{if(!isMobile||!sidebarOpen)return null;
+    const items=[["crm","💬","Чати"],["orders","📦","Замовлення"],["products","🏷️","Товари"],["analytics","📊","Аналітика"],["settings","⚙️","Налаштування"],["repair","🔧","Ремонт"]];
+    return <>
+      <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.3)",zIndex:400,animation:"fadeIn .15s ease"}}/>
+      <div style={{position:"fixed",top:0,left:0,bottom:0,width:260,background:T.surface,zIndex:401,display:"flex",flexDirection:"column",boxShadow:T.shadowLg,animation:"sidebarIn .25s ease"}}>
+        <div style={{padding:"20px 18px 14px",borderBottom:`1px solid ${T.border}`}}>
+          <div style={{fontSize:20,fontWeight:900,letterSpacing:"-0.02em"}}>IS EASY <span style={{fontSize:10,background:T.primary,color:"#fff",padding:"3px 10px",borderRadius:6,fontWeight:700,letterSpacing:.5}}>CRM</span></div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+          {items.map(([id,ic,lb])=><div key={id} onClick={()=>{if(id==="repair"){setRepair(!repair);if(repair)setPinInput(null);}else{setPage(id);}setSidebarOpen(false);}} style={{padding:"14px 20px",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",gap:12,fontWeight:page===id?700:400,background:page===id?T.primaryLight:"transparent",color:page===id?T.primary:T.text,borderLeft:page===id?`3px solid ${T.primary}`:"3px solid transparent",transition:"all .15s"}}><span style={{fontSize:18}}>{ic}</span>{lb}{id==="repair"&&repair&&<span style={{marginLeft:"auto",width:8,height:8,borderRadius:"50%",background:"#eab308"}}/>}</div>)}
+        </div>
+        <div style={{padding:"14px 18px",borderTop:`1px solid ${T.border}`,fontSize:11,color:T.textSec}}>IS EASY CRM v19</div>
+      </div>
+    </>;
+  };
 
   /* ═══ ANALYTICS PAGE ═══ */
   const AnalyticsPage=()=>{
@@ -741,7 +771,13 @@ const ProductsPage=()=>{
     </div>;};
 
   /* ═══ CHAT LIST ═══ */
-  const ChatList=({full})=><div style={{display:"flex",flexDirection:"column",background:T.surface,height:"100%",width:full?"100%":320,flexShrink:0,borderRight:full?"none":`1px solid ${T.border}`}}>
+  const ChatList=({full})=><div style={{display:"flex",flexDirection:"column",background:T.surface,height:"100%",width:full?"100%":320,flexShrink:0,borderRight:full?"none":`1px solid ${T.border}`}} onTouchStart={isMobile?handleTouchStart:undefined} onTouchEnd={isMobile?handleTouchEnd:undefined}>
+    {/* Mobile mini-header with hamburger */}
+    {isMobile&&full&&<div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0,background:T.surface}}>
+      <div onClick={()=>setSidebarOpen(true)} style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,flexShrink:0}}>☰</div>
+      <div style={{fontSize:16,fontWeight:800,flex:1}}>IS EASY <span style={{fontSize:9,background:T.primary,color:"#fff",padding:"2px 7px",borderRadius:5,fontWeight:700}}>CRM</span></div>
+      <div onClick={refreshAll} style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14}}>🔄</div>
+    </div>}
     <div style={{display:"flex",gap:0,borderBottom:`1px solid ${T.border}`,background:T.surfaceAlt}}>
       {CHANNELS.map(ch=><div key={ch.id} onClick={()=>setChannel(ch.id)} style={{flex:1,padding:"10px 4px",textAlign:"center",fontSize:11,fontWeight:channel===ch.id?700:500,cursor:"pointer",borderBottom:channel===ch.id?`2px solid ${T.primary}`:"2px solid transparent",color:channel===ch.id?T.primary:T.textSec,transition:"all .15s"}}>{ch.icon}<br/>{ch.label}</div>)}
     </div>
@@ -880,15 +916,15 @@ const ProductsPage=()=>{
             <div key={i} onClick={fn} style={{padding:"5px 12px",border:`1px solid ${a?T.primary:T.border}`,borderRadius:20,fontSize:12,cursor:"pointer",background:a?T.primary:T.surface,color:a?"#fff":T.textSec,display:"flex",alignItems:"center",gap:4,fontWeight:500,transition:"all .15s"}}>{ic} {lb}</div>)}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-          <input ref={msgInputRef} type="text" inputMode="text" autoComplete="off" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(attachImg){sendWithPhoto(input);}else{send(input);}}}} placeholder="Написати..." style={{flex:1,padding:"10px 16px",border:`1px solid ${T.border}`,borderRadius:22,fontSize:16,outline:"none",lineHeight:1.4,background:T.surfaceAlt}}/>
-          <button onClick={()=>{if(attachImg){sendWithPhoto(input);}else{send(input);}}} style={{width:40,height:40,borderRadius:"50%",background:T.primary,color:"#fff",border:"none",cursor:"pointer",fontSize:16,flexShrink:0,boxShadow:`0 2px 8px ${T.primary}40`}}>➤</button>
+          <textarea ref={msgInputRef} inputMode="text" autoComplete="off" rows={1} value={input} onChange={e=>{setInput(e.target.value);const el=e.target;el.style.height="auto";el.style.height=Math.min(el.scrollHeight,120)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(attachImg){sendWithPhoto(input);}else{send(input);}const el=e.target;el.style.height="auto";}}} placeholder="Написати..." style={{flex:1,padding:"10px 16px",border:`1px solid ${T.border}`,borderRadius:22,fontSize:16,outline:"none",lineHeight:1.4,background:T.surfaceAlt,resize:"none",overflow:"hidden",minHeight:40,maxHeight:120,fontFamily:"Inter,sans-serif"}}/>
+          <button onClick={()=>{if(attachImg){sendWithPhoto(input);}else{send(input);}if(msgInputRef.current)msgInputRef.current.style.height="auto";}} style={{width:40,height:40,borderRadius:"50%",background:T.primary,color:"#fff",border:"none",cursor:"pointer",fontSize:16,flexShrink:0,boxShadow:`0 2px 8px ${T.primary}40`,marginBottom:2}}>➤</button>
         </div>
       </div>
     </>:<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:T.textSec,flexDirection:"column",gap:10}}><span style={{fontSize:52,opacity:.6}}>💬</span><span style={{fontWeight:500}}>Оберіть чат</span></div>}
   </div>;
 
   /* ═══ SETTINGS ═══ */
-  if(page==="settings") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}><Header/>
+  if(page==="settings") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"⚙️ Налаштування"}):Header()}{MobileSidebar()}
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       {!isMobile&&<div style={{width:240,borderRight:`1px solid ${T.border}`,padding:"14px 0",background:T.surface}}>
         {[["integrations","🔗 Інтеграції"],["payments","💳 Платіжні"],["automations","🤖 Автоматизація"],["widgets","📦 Віджети"],["team","👥 Команда"],["bot","💬 Бот"]].map(([id,lb])=>
@@ -948,16 +984,24 @@ const ProductsPage=()=>{
     </div>
   </div>;
 
-  if(page==="orders") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}><Header/><OrdersPage/></div>;
-  if(page==="products") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}><Header/><ProductsPage/></div>;
-  if(page==="analytics") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}><Header/><AnalyticsPage/></div>;
+  /* Mobile header for sub-pages */
+  const MobileSubHeader=({title})=>isMobile?<div style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0,background:T.surface}}>
+    <span onClick={()=>setPage("crm")} style={{fontSize:22,cursor:"pointer",color:T.textSec}}>←</span>
+    <span style={{fontWeight:700,fontSize:16,flex:1}}>{title}</span>
+    <div onClick={()=>setSidebarOpen(true)} style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14}}>☰</div>
+  </div>:null;
+
+  if(page==="orders") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"📦 Замовлення"}):Header()}{OrdersPage()}{MobileSidebar()}</div>;
+  if(page==="products") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"🏷️ Товари"}):Header()}{ProductsPage()}{MobileSidebar()}</div>;
+  if(page==="analytics") return <div style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"📊 Аналітика"}):Header()}{AnalyticsPage()}{MobileSidebar()}</div>;
 
   if(page==="comments"){setPage("crm");return null;}
 
   /* ═══ CRM PAGE ═══ */
   return <div style={{display:"flex",flexDirection:"column",height:"100vh",overflow:"hidden",position:"relative",background:T.bg}} className={repair?"repair-mode":""} onContextMenu={handleRepairClick}>
-    <Header/>
-    {notif&&<div style={{position:"fixed",top:64,left:"50%",transform:"translateX(-50%)",background:T.text,color:"#fff",padding:"12px 28px",borderRadius:14,fontSize:14,fontWeight:600,zIndex:200,boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>{notif}</div>}
+    {!isMobile&&Header()}
+    {MobileSidebar()}
+    {notif&&<div style={{position:"fixed",top:isMobile?10:64,left:"50%",transform:"translateX(-50%)",background:T.text,color:"#fff",padding:"12px 28px",borderRadius:14,fontSize:14,fontWeight:600,zIndex:200,boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>{notif}</div>}
     {repair&&pins.map((pin,i)=><div key={pin.id} className="repair-pin" style={{left:pin.x,top:pin.y}} title={pin.text}>{i+1}</div>)}
     {repair&&<div style={{background:T.warnLight,borderBottom:"2px solid #eab308",padding:"10px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:6}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}><b>🔧 РЕМОНТ</b><span style={{fontSize:12,color:"#854d0e"}}>ПКМ → коментар</span></div>
@@ -974,19 +1018,19 @@ const ProductsPage=()=>{
 
     {/* MAIN */}
     {isMobile?<div style={{flex:1,overflow:"hidden",display:"flex"}}>
-      {mobileView==="list"&&<div style={{width:"100%",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}><ChatList full/></div>}
-      {mobileView==="chat"&&<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}><ChatArea full/></div>}
+      {mobileView==="list"&&<div style={{width:"100%",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}>{ChatList({full:true})}</div>}
+      {mobileView==="chat"&&<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}>{ChatArea({full:true})}</div>}
       {mobileView==="client"&&conv&&<div style={{width:"100%",display:"flex",flexDirection:"column",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="glass" style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
           <span onClick={()=>{setSlideDir("left");setMobileView("chat");}} style={{fontSize:22,cursor:"pointer",color:T.textSec}}>←</span>
           <span style={{fontWeight:700,fontSize:15,flex:1}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</span>
         </div>
-        <RightPanel/>
+        {RightPanel()}
       </div>}
     </div>:<div style={{flex:1,display:"flex",overflow:"hidden"}}>
-      <ChatList/>
-      <ChatArea/>
-      {conv&&<div style={{width:340,borderLeft:`1px solid ${T.border}`,display:"flex",flexDirection:"column",flexShrink:0}}><RightPanel/></div>}
+      {ChatList({})}
+      {ChatArea({})}
+      {conv&&<div style={{width:340,borderLeft:`1px solid ${T.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>{RightPanel()}</div>}
     </div>}
 
     {/* SOS */}
@@ -1034,7 +1078,7 @@ const ProductsPage=()=>{
     </div>}
 
     {/* PRODUCT PICKER (global — works from chat input AND client card) */}
-    {showProdPicker&&<ProductPicker onSelect={(p)=>{setProdModal(p);setSelSize(null);setShowProdPicker(false);}} onClose={()=>setShowProdPicker(false)}/>}
+    {showProdPicker&&ProductPicker({onSelect:(p)=>{setProdModal(p);setSelSize(null);setShowProdPicker(false);},onClose:()=>setShowProdPicker(false)})}
 
     {/* PRODUCT MODAL */}
     {prodModal&&<div onClick={()=>{setProdModal(null);setSelSize(null);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16}}>
