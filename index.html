@@ -153,10 +153,10 @@ function App(){
   const[attachImg,setAttachImg]=useState(null);const fileInputRef=useRef(null);
   const[mediaCache,setMediaCache]=useState({});
 
-  const sosEnd=useRef(null);const ce=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);
+  const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const scrollToBottom=()=>{if(chatBoxRef.current){chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
-  useEffect(()=>{const t1=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),50);const t2=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),300);const t3=setTimeout(()=>ce.current?.scrollIntoView({behavior:"auto"}),800);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);};},[selId,conv?.msgs?.length]);
+  useEffect(()=>{scrollToBottom();const t1=setTimeout(scrollToBottom,100);const t2=setTimeout(scrollToBottom,400);const t3=setTimeout(scrollToBottom,1000);const t4=setTimeout(scrollToBottom,2000);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4);};},[selId,conv?.msgs?.length]);
   useEffect(()=>{setTimeout(()=>sosEnd.current?.scrollIntoView({behavior:"smooth"}),60);},[sosM.length]);
   const noti=useCallback(m=>{setNotif(m);setTimeout(()=>setNotif(null),2500);},[]);
 
@@ -289,7 +289,13 @@ function App(){
   const cancelFunnelChange=()=>{if(funnelPending){setConvs(p=>p.map(c=>c.id===selId?{...c,funnel:funnelPending.oldFunnel}:c));setFunnelPending(null);noti("Скасовано");}};
   const confirmFunnelChange=()=>{setFunnelPending(null);noti("Статус змінено!");};
   const addOrder=(pr,sz)=>{const o={id:Date.now(),product:pr,size:sz,total:pr.price,paid:0,status:"new",date:new Date().toISOString().split("T")[0],ttn:"",type:"order",npStatus:"",daysAtPost:0,repairNote:"",repairPhotos:[],returnTtn:""};
-    setConvs(p=>p.map(c=>c.id===selId?{...c,orders:[...(c.orders||[]),o],funnel:c.funnel==="new"?"processing":c.funnel}:c));send(pr.name+"\n"+pr.sku+" | р."+sz+" | "+pr.price+" грн");setProdModal(null);setSelSize(null);
+    const prodText=pr.name+"\nАрт: "+pr.sku+"\nРозмір: "+sz+"\nЦіна: "+pr.price+" грн";const now=Date.now();
+    setConvs(p=>p.map(c=>c.id===selId?{...c,orders:[...(c.orders||[]),o],funnel:c.funnel==="new"?"processing":c.funnel,
+      msgs:[...c.msgs,{id:now,dir:"out",text:prodText,time:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),ts:now,mediaUrl:pr.img||"",msgType:pr.img?"image":"text",isProduct:true}],
+      lastMsg:pr.name+" | "+pr.price+" грн",lastTime:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),lastTs:now,lastDir:"out",unread:0}:c).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0)));
+    setProdModal(null);setSelSize(null);setInput("");
+    /* Send to Instagram: image + text + confirm button */
+    api("/api/conversations/"+selId+"/messages",{method:"POST",body:JSON.stringify({text:prodText,image_url:pr.img||"",quick_replies:[{title:"✅ Підтвердити",payload:"CONFIRM_ORDER"}]})});
     api("/api/orders",{method:"POST",body:JSON.stringify({conversation_id:selId,product_id:pr.id,size:sz,total:pr.price,paid:0,status:"new",type:"order"})});};
   const removeOrder=(oid)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).filter(o=>o.id!==oid)}:c));noti("Замовлення видалено");};
   const updateOrder=(oid,upd)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).map(o=>o.id===oid?{...o,...upd}:o)}:c));
@@ -357,7 +363,10 @@ function App(){
     if(typeof id==="string"&&id.startsWith("cmt_"))return;/* virtual comment-only conv */
     api("/api/conversations/"+id+"/messages").then(msgs=>{if(msgs&&msgs.length>0){
       const mapped=msgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
-      setConvs(p=>p.map(x=>{if(x.id!==id)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mapped,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));return{...x,msgs:all,_loaded:true};}));}});
+      setConvs(p=>p.map(x=>{if(x.id!==id)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mapped,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));
+        /* Auto-extract client data if no cd yet */
+        if(!x.cd){for(let i=all.length-1;i>=0;i--){if(all[i].dir==="in"&&!all[i].type){const d=parseCD(all[i].text);if(d&&(d.surname||d.phone)){api("/api/clients",{method:"POST",body:JSON.stringify({...d,conversation_id:id})});return{...x,msgs:all,_loaded:true,cd:d,funnel:x.funnel==="new"?"processing":x.funnel};}}}}
+        return{...x,msgs:all,_loaded:true};}));}});
   };
   const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(false);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile)setMobileView("chat");
     api("/api/conversations/"+id+"/read",{method:"POST"});
@@ -736,7 +745,7 @@ const ProductsPage=()=>{
         <span><b>🤖</b> Клієнт питає про строки</span>
         <button onClick={()=>setProdReq({conv})} style={{padding:"5px 12px",background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer"}}>🏭 Виробництво</button>
       </div>}
-      <div style={{flex:1,overflowY:"auto",padding:"16px 16px",display:"flex",flexDirection:"column",gap:4,background:`linear-gradient(180deg, ${T.surfaceAlt} 0%, #f5f2ec 100%)`}}>
+      <div ref={chatBoxRef} style={{flex:1,overflowY:"auto",padding:"16px 16px",display:"flex",flexDirection:"column",gap:4,background:`linear-gradient(180deg, ${T.surfaceAlt} 0%, #f5f2ec 100%)`}}>
         {conv.msgs.map(msg=><div key={msg.id}>
           {msg.type==="comment"?
           /* ── COMMENT MESSAGE ── */
