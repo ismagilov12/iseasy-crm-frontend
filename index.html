@@ -168,7 +168,7 @@ function App(){
     (async()=>{
       try{
         const[prods,convsRaw,cmts]=await Promise.all([api("/api/products"),api("/api/conversations"),api("/api/comments")]);
-        if(prods&&prods.length>0)setProducts(prods);
+        if(prods&&prods.length>0){const mapped_prods=prods.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[40,41,42,43,44,45])}));setProducts(mapped_prods);}
         if(convsRaw&&convsRaw.length>0){
           const pMap={};(prods&&prods.length?prods:products).forEach(p=>{pMap[p.id]=p;});
           const mapped=convsRaw.map(c=>({
@@ -327,34 +327,45 @@ function App(){
     r.onresult=(e)=>{const t=e.results[0][0].transcript;setInput(prev=>prev+(prev?" ":"")+t);setRecording(false);};
     r.onerror=()=>{setRecording(false);noti("Помилка розпізнавання");};r.onend=()=>setRecording(false);
     r.start();setRecording(true);};
-  const saveProductsToDB=()=>{
-    api("/api/products",{method:"POST",body:JSON.stringify(products)}).then(()=>noti("Товари збережено")).catch(e=>console.error("Save error",e));
+  const saveProductsToDB=(prods)=>{
+    const toSave=prods||products;
+    api("/api/products",{method:"POST",body:JSON.stringify(toSave.map(p=>({id:p.id,name:p.name,sku:p.sku,price:p.price,cost:p.cost,stock:p.stock,sizes:p.sizes,gender:p.gender,category:p.category,img:p.img||p.image_url||""})))}).then(res=>{
+      if(res&&Array.isArray(res)&&res.length>0){
+        /* Update local products with DB ids */
+        const mapped=res.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[])}));
+        setProducts(prev=>{const dbIds=new Set(mapped.map(m=>m.id));return[...prev.filter(p=>!dbIds.has(p.id)),...mapped];});
+      }
+      noti("Товари збережено в базу!");}).catch(e=>{console.error("Save error",e);noti("Помилка збереження");});
   };
   
   const handleAddProduct=()=>{
     const newProd={id:Date.now(),name:"Новий товар",sku:"ULT-NEW-"+String(products.length+1).padStart(3,"0"),price:0,cost:0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:"Весна-Осінь",img:""};
-    setProducts(p=>[...p,newProd]);
-    saveProductsToDB();
+    setProducts(p=>{const next=[...p,newProd];saveProductsToDB(next);return next;});
     noti("Товар додано");
   };
   
   const handleDeleteProduct=(pid)=>{
-    setProducts(pr=>pr.filter(x=>x.id!==pid));
-    saveProductsToDB();
-    noti("Товар видалено");
+    setProducts(pr=>{const next=pr.filter(x=>x.id!==pid);return next;});
+    api("/api/products/"+pid,{method:"DELETE"}).then(()=>noti("Товар видалено")).catch(()=>noti("Помилка видалення"));
   };
-  
+
   const handleUpdateProduct=(pid,field,value)=>{
     setProducts(pr=>pr.map(x=>x.id===pid?{...x,[field]:value}:x));
-    saveProductsToDB();
+    /* Save single field to DB */
+    const body={[field]:value};
+    api("/api/products/"+pid,{method:"PUT",body:JSON.stringify(body)});
   };
-  
-  const handleImportCSV=()=>{const inp=document.createElement("input");inp.type="file";inp.onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{const text=ev.target.result;const lines=text.split("\n").filter(l=>l.trim());const imported=[];lines.slice(1).forEach((line,idx)=>{const[name,sku,price,cost,category,img]=(line.match(/(?:"(?:[^"]*(?:""[^"]*)*)"|[^,]*)/g)||[]).map(f=>f.replace(/^"|"$/g,"").replace(/""/g,'"').trim());if(name&&sku){imported.push({id:Date.now()+idx,name,sku,price:parseInt(price)||0,cost:parseInt(cost)||0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:category||"Весна-Осінь",img:img||""});}});if(imported.length){setProducts(prev=>[...prev,...imported]);saveProductsToDB();noti("Імпортовано: "+imported.length+" товарів");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
-  
+
+  const handleImportCSV=()=>{const inp=document.createElement("input");inp.type="file";inp.accept=".csv";inp.onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{const text=ev.target.result;const lines=text.split("\n").filter(l=>l.trim());const imported=[];lines.slice(1).forEach((line,idx)=>{const cols=(line.match(/(?:"(?:[^"]*(?:""[^"]*)*)"|[^,]*)/g)||[]).map(f=>f.replace(/^"|"$/g,"").replace(/""/g,'"').trim());const[name,sku,price,cost,category,img]=cols;if(name&&sku){imported.push({id:Date.now()+idx,name,sku,price:parseInt(price)||0,cost:parseInt(cost)||0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:category||"Весна-Осінь",img:img||""});}});if(imported.length){setProducts(prev=>{const next=[...prev,...imported];return next;});
+      /* Save imported products to database */
+      api("/api/products",{method:"POST",body:JSON.stringify(imported.map(p=>({name:p.name,sku:p.sku,price:p.price,cost:p.cost,stock:p.stock,sizes:p.sizes,gender:p.gender,category:p.category,img:p.img})))}).then(res=>{
+        if(res&&Array.isArray(res)&&res.length>0){const mapped=res.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[])}));setProducts(prev=>{const tmpIds=new Set(imported.map(i=>i.id));return[...prev.filter(p=>!tmpIds.has(p.id)),...mapped];});}
+        noti("Імпортовано та збережено: "+imported.length+" товарів");}).catch(e=>{console.error("Import save error",e);noti("Імпортовано "+imported.length+" товарів (помилка збереження)");});
+    }else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
+
   const handleDuplicateProduct=(p)=>{
     const dup={...p,id:Date.now(),name:p.name+" (копія)",sku:p.sku+"-COPY"};
-    setProducts(prev=>[...prev,dup]);
-    saveProductsToDB();
+    setProducts(prev=>{const next=[...prev,dup];saveProductsToDB(next);return next;});
     noti("Товар дубльовано");
   };
 
