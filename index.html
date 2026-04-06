@@ -148,7 +148,10 @@ function App(){
   const[sosOpen,setSosOpen]=useState(false);const[sosIn,setSosIn]=useState("");const[sosM,setSosM]=useState([{id:0,role:"ai",text:"Привіт! Я AI-асистент IS EASY CRM."}]);const[sosTyp,setSosTyp]=useState(false);
   const[repair,setRepair]=useState(false);const[pins,setPins]=useState([]);const[pinInput,setPinInput]=useState(null);const[pinText,setPinText]=useState("");
   const[page,setPage]=useState("crm");const[settingsTab,setSettingsTab]=useState("integrations");
-  const[autos,setAutos]=useState(DEFAULT_AUTOMATIONS);const[autoInput,setAutoInput]=useState("");
+  const[autos,setAutos]=useState([]);const[autoInput,setAutoInput]=useState("");
+  const[funnelStages,setFunnelStages]=useState([...FNL]);const[funnelSaving,setFunnelSaving]=useState(false);
+  const[newFunnelName,setNewFunnelName]=useState("");const[newFunnelColor,setNewFunnelColor]=useState("#3b82f6");const[newFunnelIcon,setNewFunnelIcon]=useState("📌");
+  const[autoForm,setAutoForm]=useState({name:"",trigger_type:"funnel_change",trigger_text:"",actions:[{type:"send_message",text:""}]});
   const[prodReq,setProdReq]=useState(null);const[prodDate,setProdDate]=useState("");
   const[mobileView,setMobileView]=useState("list");const[funnelOpen,setFunnelOpen]=useState(false);const[funnelPending,setFunnelPending]=useState(null);const[slideDir,setSlideDir]=useState("right");/* "left" or "right" for animation direction */
   const[sidebarOpen,setSidebarOpen]=useState(false);/* mobile sidebar menu */
@@ -263,6 +266,12 @@ function App(){
         /* Load unmatched payments */
         const uPays=await api("/api/payments/unmatched");
         if(uPays&&Array.isArray(uPays))setUnmatchedPays(uPays);
+        /* Load funnel stages */
+        const fnls=await api("/api/funnels");
+        if(fnls&&Array.isArray(fnls)&&fnls.length>0)setFunnelStages(fnls);
+        /* Load automations */
+        const autoRules=await api("/api/automations");
+        if(autoRules&&Array.isArray(autoRules))setAutos(autoRules);
       }catch(e){console.error("Failed to load data",e);}
       setLoading(false);
     })();
@@ -1110,12 +1119,12 @@ const ProductsPage=()=>{
   if(page==="settings") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"⚙️ Налаштування"}):Header()}{MobileSidebar()}
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       {!isMobile&&<div style={{width:240,borderRight:`1px solid ${T.border}`,padding:"14px 0",background:T.surface}}>
-        {[["integrations","🔗 Інтеграції"],["payments","💳 Платіжні"],["automations","🤖 Автоматизація"],["widgets","📦 Віджети"],["team","👥 Команда"],["bot","💬 Бот"]].map(([id,lb])=>
+        {[["integrations","🔗 Інтеграції"],["payments","💳 Платіжні"],["funnels","🎯 Воронки"],["automations","🤖 Автоматизація"],["widgets","📦 Віджети"],["team","👥 Команда"],["bot","💬 Бот"]].map(([id,lb])=>
           <div key={id} onClick={()=>setSettingsTab(id)} style={{padding:"12px 22px",cursor:"pointer",fontSize:14,fontWeight:settingsTab===id?700:400,background:settingsTab===id?T.primaryLight:"transparent",borderLeft:settingsTab===id?`3px solid ${T.primary}`:"3px solid transparent",color:settingsTab===id?T.primary:T.text,transition:"all .15s"}}>{lb}</div>)}
       </div>}
       <div style={{flex:1,padding:isMobile?16:28,overflowY:"auto"}}>
         {isMobile&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
-          {[["integrations","🔗"],["payments","💳"],["automations","🤖"],["widgets","📦"],["team","👥"],["bot","💬"]].map(([id,ic])=>
+          {[["integrations","🔗"],["payments","💳"],["funnels","🎯"],["automations","🤖"],["widgets","📦"],["team","👥"],["bot","💬"]].map(([id,ic])=>
             <div key={id} onClick={()=>setSettingsTab(id)} style={{padding:"8px 14px",borderRadius:T.btnRadius,fontSize:12,fontWeight:600,cursor:"pointer",background:settingsTab===id?T.primary:T.surfaceAlt,color:settingsTab===id?"#fff":T.text,border:`1px solid ${settingsTab===id?T.primary:T.border}`,transition:"all .15s"}}>{ic}</div>)}
         </div>}
         {settingsTab==="integrations"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>Інтеграції</h2>
@@ -1247,18 +1256,121 @@ const ProductsPage=()=>{
             4. Якщо не знайдено — показує в списку для ручного підтвердження
           </div>
         </div>}
-        {settingsTab==="automations"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>🤖 Автоматизація</h2>
-          <div style={{display:"flex",gap:10,marginBottom:24,flexDirection:isMobile?"column":"row"}}>
-            <textarea value={autoInput} onChange={e=>setAutoInput(e.target.value)} placeholder='Опишіть сценарій...' style={{flex:1,padding:"12px 16px",border:`1px solid ${T.border}`,borderRadius:T.cardRadius,fontSize:13,outline:"none",resize:"none",minHeight:60,background:T.surfaceAlt}}/>
-            <button onClick={()=>{if(!autoInput.trim())return;setAutos(p=>[...p,{id:Date.now(),name:autoInput.trim().substring(0,60),trigger:autoInput.trim(),active:true,actions:"AI обробить"}]);setAutoInput("");noti("Створено!");}} style={{padding:"12px 18px",background:"#7c3aed",color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:13}}>+ Створити</button>
-          </div>
-          {autos.map(a=><div key={a.id} className="card" style={{padding:16,marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
-              <span style={{fontWeight:700}}>{a.name}</span>
-              <div style={{display:"flex",gap:6,alignItems:"center"}}><Badge label={a.active?"Активна":"Вимкнена"} color={a.active?T.accent:T.danger}/><button onClick={()=>setAutos(p=>p.map(x=>x.id===a.id?{...x,active:!x.active}:x))} style={{padding:"4px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,cursor:"pointer",background:T.surfaceAlt}}>{a.active?"Вимкнути":"Увімкнути"}</button></div>
+        {/* ── FUNNELS TAB ── */}
+        {settingsTab==="funnels"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>🎯 Воронки</h2>
+          <p style={{fontSize:13,color:T.textSec,marginBottom:16}}>Налаштуйте етапи воронки продажів. Перетягуйте для зміни порядку.</p>
+          {/* Existing funnels */}
+          {funnelStages.map((f,i)=><div key={f.id} className="card" style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",marginBottom:6}}>
+            <div style={{width:28,height:28,borderRadius:8,background:f.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{f.icon}</div>
+            <div style={{flex:1}}>
+              <input value={f.label} onChange={e=>{const v=e.target.value;setFunnelStages(p=>p.map((x,j)=>j===i?{...x,label:v}:x));}} style={{border:"none",background:"transparent",fontSize:14,fontWeight:600,outline:"none",width:"100%"}}/>
             </div>
-            <div style={{fontSize:12,color:T.textSec,whiteSpace:"pre-wrap"}}>{a.actions}</div>
-          </div>)}</div>}
+            <input type="color" value={f.color} onChange={e=>{const v=e.target.value;setFunnelStages(p=>p.map((x,j)=>j===i?{...x,color:v}:x));}} style={{width:32,height:28,border:"none",cursor:"pointer",borderRadius:6}}/>
+            <div style={{display:"flex",gap:2}}>
+              {i>0&&<button onClick={()=>setFunnelStages(p=>{const n=[...p];[n[i-1],n[i]]=[n[i],n[i-1]];return n;})} style={{padding:"3px 6px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:10,cursor:"pointer",background:T.surfaceAlt}}>▲</button>}
+              {i<funnelStages.length-1&&<button onClick={()=>setFunnelStages(p=>{const n=[...p];[n[i],n[i+1]]=[n[i+1],n[i]];return n;})} style={{padding:"3px 6px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:10,cursor:"pointer",background:T.surfaceAlt}}>▼</button>}
+            </div>
+            <button onClick={()=>{if(funnelStages.length<=2){noti("Мінімум 2 етапи");return;}setFunnelStages(p=>p.filter((_,j)=>j!==i));}} style={{padding:"3px 8px",background:"transparent",color:T.danger,border:"none",fontSize:14,cursor:"pointer",opacity:.6}}>✕</button>
+          </div>)}
+          {/* Add new funnel */}
+          <div className="card" style={{padding:14,marginTop:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <input value={newFunnelIcon} onChange={e=>setNewFunnelIcon(e.target.value)} style={{width:40,textAlign:"center",padding:"6px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:16}}/>
+            <input value={newFunnelName} onChange={e=>setNewFunnelName(e.target.value)} placeholder="Назва нового етапу..." style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:13,outline:"none",minWidth:140}}/>
+            <input type="color" value={newFunnelColor} onChange={e=>setNewFunnelColor(e.target.value)} style={{width:36,height:32,border:"none",cursor:"pointer",borderRadius:6}}/>
+            <button onClick={()=>{if(!newFunnelName.trim()){noti("Введіть назву");return;}const id=newFunnelName.trim().toLowerCase().replace(/\s+/g,"_").replace(/[^a-zа-яіїєґ0-9_]/g,"");setFunnelStages(p=>[...p,{id:id||"stage_"+Date.now(),label:newFunnelName.trim(),color:newFunnelColor,icon:newFunnelIcon||"📌"}]);setNewFunnelName("");}} style={{padding:"8px 16px",background:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
+          </div>
+          {/* Save button */}
+          <div style={{marginTop:16,display:"flex",gap:10}}>
+            <button disabled={funnelSaving} onClick={async()=>{
+              setFunnelSaving(true);
+              const r=await api("/api/funnels",{method:"PUT",body:JSON.stringify(funnelStages)});
+              setFunnelSaving(false);
+              if(r&&r.status==="ok"){noti("Воронки збережено! ("+r.count+" етапів)");}else noti("Помилка збереження");
+            }} style={{padding:"10px 24px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:14,fontWeight:700,cursor:"pointer",opacity:funnelSaving?.5:1}}>{funnelSaving?"Зберігаю...":"Зберегти воронки"}</button>
+          </div>
+        </div>}
+
+        {/* ── AUTOMATIONS TAB ── */}
+        {settingsTab==="automations"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>🤖 Автоматизація</h2>
+          <p style={{fontSize:13,color:T.textSec,marginBottom:16}}>Створюйте правила автоматизації: при зміні воронки, новому повідомленню тощо — система автоматично виконає дії.</p>
+
+          {/* Create new automation */}
+          <div className="card" style={{padding:20,marginBottom:20}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>+ Нове правило</div>
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Назва</label>
+              <input value={autoForm.name} onChange={e=>setAutoForm(p=>({...p,name:e.target.value}))} placeholder="Напр: Привітання при оформленні" style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+            </div>
+            <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:150}}>
+                <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Тригер</label>
+                <select value={autoForm.trigger_type} onChange={e=>setAutoForm(p=>({...p,trigger_type:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}>
+                  <option value="funnel_change">🎯 Переміщення у воронку</option>
+                  <option value="new_message">💬 Нове повідомлення (ключове слово)</option>
+                  <option value="payment_received">💰 Отримано оплату</option>
+                  <option value="order_created">📦 Створено замовлення</option>
+                </select>
+              </div>
+              <div style={{flex:1,minWidth:150}}>
+                <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{autoForm.trigger_type==="funnel_change"?"Яка воронка?":"Ключове слово"}</label>
+                {autoForm.trigger_type==="funnel_change"?
+                  <select value={autoForm.trigger_text} onChange={e=>setAutoForm(p=>({...p,trigger_text:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}>
+                    <option value="">-- Оберіть етап --</option>
+                    {funnelStages.map(f=><option key={f.id} value={f.id}>{f.icon} {f.label}</option>)}
+                  </select>
+                  :<input value={autoForm.trigger_text} onChange={e=>setAutoForm(p=>({...p,trigger_text:e.target.value}))} placeholder="Введіть слово..." style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>}
+              </div>
+            </div>
+            {/* Actions */}
+            <div style={{marginBottom:10}}>
+              <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Дії</label>
+              {autoForm.actions.map((act,ai)=><div key={ai} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                <select value={act.type} onChange={e=>{const v=e.target.value;setAutoForm(p=>({...p,actions:p.actions.map((a,j)=>j===ai?{...a,type:v}:a)}));}} style={{padding:"8px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none",background:T.surfaceAlt}}>
+                  <option value="send_message">📨 Надіслати повідомлення</option>
+                  <option value="change_funnel">🎯 Змінити воронку</option>
+                  <option value="add_tag">🏷 Додати тег</option>
+                </select>
+                {act.type==="send_message"&&<input value={act.text||""} onChange={e=>{const v=e.target.value;setAutoForm(p=>({...p,actions:p.actions.map((a,j)=>j===ai?{...a,text:v}:a)}));}} placeholder="Текст повідомлення..." style={{flex:1,padding:"8px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none"}}/>}
+                {act.type==="change_funnel"&&<select value={act.funnel||""} onChange={e=>{const v=e.target.value;setAutoForm(p=>({...p,actions:p.actions.map((a,j)=>j===ai?{...a,funnel:v}:a)}));}} style={{flex:1,padding:"8px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none",background:T.surfaceAlt}}>
+                  <option value="">-- Воронка --</option>
+                  {funnelStages.map(f=><option key={f.id} value={f.id}>{f.icon} {f.label}</option>)}
+                </select>}
+                {act.type==="add_tag"&&<input value={act.tag||""} onChange={e=>{const v=e.target.value;setAutoForm(p=>({...p,actions:p.actions.map((a,j)=>j===ai?{...a,tag:v}:a)}));}} placeholder="Назва тегу..." style={{flex:1,padding:"8px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none"}}/>}
+                {autoForm.actions.length>1&&<button onClick={()=>setAutoForm(p=>({...p,actions:p.actions.filter((_,j)=>j!==ai)}))} style={{color:T.danger,border:"none",background:"transparent",cursor:"pointer",fontSize:14}}>✕</button>}
+              </div>)}
+              <button onClick={()=>setAutoForm(p=>({...p,actions:[...p.actions,{type:"send_message",text:""}]}))} style={{padding:"4px 12px",border:`1px dashed ${T.border}`,borderRadius:8,fontSize:11,cursor:"pointer",background:"transparent",color:T.textSec,marginTop:4}}>+ Додати дію</button>
+            </div>
+            <button onClick={async()=>{
+              if(!autoForm.name.trim()){noti("Введіть назву");return;}
+              if(!autoForm.trigger_text&&autoForm.trigger_type!=="payment_received"&&autoForm.trigger_type!=="order_created"){noti("Оберіть тригер");return;}
+              const r=await api("/api/automations",{method:"POST",body:JSON.stringify(autoForm)});
+              if(r&&r.id){setAutos(p=>[r,...p]);setAutoForm({name:"",trigger_type:"funnel_change",trigger_text:"",actions:[{type:"send_message",text:""}]});noti("Автоматизацію створено!");}else noti("Помилка");
+            }} style={{padding:"10px 20px",background:"#7c3aed",color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:"pointer"}}>Створити правило</button>
+          </div>
+
+          {/* Existing automations */}
+          {autos.map(a=>{const acts=typeof a.actions==="string"?JSON.parse(a.actions||"[]"):a.actions||[];const trigLabel={"funnel_change":"🎯 Воронка: ","new_message":"💬 Слово: ","payment_received":"💰 Оплата","order_created":"📦 Замовлення"}[a.trigger_type]||a.trigger_type;
+          const fLabel=a.trigger_type==="funnel_change"?(funnelStages.find(f=>f.id===a.trigger_text)||{}).label||a.trigger_text:a.trigger_text;
+          return <div key={a.id} className="card" style={{padding:16,marginBottom:10,opacity:a.is_active?1:.5}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+              <div><span style={{fontWeight:700}}>{a.name}</span><br/><span style={{fontSize:11,color:T.textSec}}>{trigLabel}{fLabel}</span></div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {a.run_count>0&&<span style={{fontSize:10,color:T.textSec}}>▶ {a.run_count}x</span>}
+                <Badge label={a.is_active?"Активна":"Вимкнена"} color={a.is_active?T.accent:T.danger}/>
+                <button onClick={async()=>{const r=await api("/api/automations/"+a.id,{method:"PATCH",body:JSON.stringify({is_active:!a.is_active})});setAutos(p=>p.map(x=>x.id===a.id?{...x,is_active:!x.is_active}:x));}} style={{padding:"4px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,cursor:"pointer",background:T.surfaceAlt}}>{a.is_active?"Вимкнути":"Увімкнути"}</button>
+                <button onClick={async()=>{await api("/api/automations/"+a.id,{method:"DELETE"});setAutos(p=>p.filter(x=>x.id!==a.id));noti("Видалено");}} style={{padding:"4px 8px",border:"none",background:"transparent",color:T.danger,cursor:"pointer",fontSize:13}}>🗑</button>
+              </div>
+            </div>
+            {acts.length>0&&<div style={{fontSize:12,color:T.textSec}}>
+              {acts.map((act,i)=><div key={i} style={{padding:"3px 0"}}>
+                {act.type==="send_message"&&<span>📨 Надіслати: "{(act.text||"").substring(0,60)}{act.text?.length>60?"...":""}"</span>}
+                {act.type==="change_funnel"&&<span>🎯 Змінити воронку на: {(funnelStages.find(f=>f.id===act.funnel)||{}).label||act.funnel}</span>}
+                {act.type==="add_tag"&&<span>🏷 Додати тег: {act.tag}</span>}
+              </div>)}
+            </div>}
+          </div>})}
+          {autos.length===0&&<div style={{textAlign:"center",padding:24,color:T.textSec,fontSize:13}}>Немає автоматизацій. Створіть першу!</div>}
+        </div>}
         {settingsTab==="widgets"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>📦 Віджети</h2>
           <div className="card" style={{padding:20,marginBottom:14}}>
             <div style={{fontWeight:700,fontSize:16,marginBottom:14}}>📦 Нова Пошта — налаштування відправки</div>
