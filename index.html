@@ -151,6 +151,7 @@ function App(){
   const[showMobileClientCard,setShowMobileClientCard]=useState(false);
   const[comments,setComments]=useState([]);const[commentReply,setCommentReply]=useState(null);const[commentReplyText,setCommentReplyText]=useState("");
   const[attachImg,setAttachImg]=useState(null);const fileInputRef=useRef(null);
+  const[mediaCache,setMediaCache]=useState({});
 
   const sosEnd=useRef(null);const ce=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
@@ -206,6 +207,65 @@ function App(){
       setLoading(false);
     })();
   },[]);
+
+  /* ── Fetch media for comment messages ── */
+  const fetchMedia=useCallback((mediaId)=>{
+    if(!mediaId||mediaCache[mediaId])return;
+    setMediaCache(p=>({...p,[mediaId]:"loading"}));
+    api("/api/media/"+mediaId).then(data=>{if(data&&data.media_url)setMediaCache(p=>({...p,[mediaId]:data}));else setMediaCache(p=>({...p,[mediaId]:{id:mediaId,media_url:"",media_type:"",error:true}}));}).catch(()=>setMediaCache(p=>({...p,[mediaId]:{error:true}})));
+  },[mediaCache]);
+
+  /* ── Auto-refresh conversations every 15s ── */
+  useEffect(()=>{
+    const interval=setInterval(async()=>{
+      try{
+        const[convsRaw,cmts]=await Promise.all([api("/api/conversations"),api("/api/comments")]);
+        if(convsRaw&&convsRaw.length>0){
+          const pMap={};products.forEach(p=>{pMap[p.id]=p;});
+          const mapped=convsRaw.map(c=>({
+            id:c.id,username:c.instagram_username||c.username||"",name:c.client_name||c.name||"",
+            funnel:c.funnel||"new",channel:c.channel||"instagram",
+            instagram_user_id:c.instagram_user_id||"",
+            lastMsg:c.last_message_text||"",
+            lastTime:c.last_message_at?new Date(c.last_message_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):"",
+            lastTs:c.last_message_at?new Date(c.last_message_at).getTime():0,
+            unread:c.unread_count||0,lastDir:c.last_message_dir||"in",
+            msgs:[],cd:c.cd||c.client_data||null,
+            orders:(c.orders||[]).map(o=>({...o,product:o.product_id?pMap[o.product_id]:o.product}))
+          }));
+          /* Merge comments */
+          if(cmts&&cmts.length>0){
+            setComments(cmts);
+            const byIgId={};mapped.forEach(c=>{if(c.instagram_user_id)byIgId[c.instagram_user_id]=c;});
+            const virtuals=[];
+            cmts.filter(cm=>!cm.is_reply&&cm.instagram_user_id!=="17841465693388986").forEach(cm=>{
+              let cv=byIgId[cm.instagram_user_id];
+              if(!cv){cv={id:"cmt_"+cm.instagram_user_id,username:cm.username||"",name:cm.username||"User",funnel:"new",channel:"instagram",instagram_user_id:cm.instagram_user_id,lastMsg:"",lastTime:"",lastTs:0,unread:0,lastDir:"in",msgs:[],cd:null,orders:[],isVirtual:true};byIgId[cm.instagram_user_id]=cv;virtuals.push(cv);}
+              const cmtTime=cm.created_at?new Date(cm.created_at):new Date();
+              cv.msgs.push({id:"cmt_"+cm.id,dir:"in",text:cm.text||"",time:cmtTime.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),type:"comment",mediaId:cm.instagram_media_id||"",commentId:cm.instagram_comment_id||"",username:cm.username||"",igUserId:cm.instagram_user_id||""});
+              const ts=cmtTime.getTime();
+              if(ts>cv.lastTs){cv.lastTs=ts;cv.lastTime=cmtTime.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"});cv.lastMsg="📸 "+cm.text.substring(0,40);cv.lastDir="in";}
+            });
+            const allConvs=[...mapped,...virtuals].sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
+            /* Preserve loaded msgs and selection state */
+            setConvs(prev=>{
+              return allConvs.map(nc=>{
+                const old=prev.find(p=>p.id===nc.id);
+                if(old&&old.msgs&&old.msgs.length>0){
+                  return{...nc,msgs:old.msgs,unread:nc.id===selId?0:nc.unread};
+                }
+                return{...nc,unread:nc.id===selId?0:nc.unread};
+              });
+            });
+          }else{
+            mapped.sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
+            setConvs(prev=>mapped.map(nc=>{const old=prev.find(p=>p.id===nc.id);if(old&&old.msgs&&old.msgs.length>0)return{...nc,msgs:old.msgs,unread:nc.id===selId?0:nc.unread};return{...nc,unread:nc.id===selId?0:nc.unread};}));
+          }
+        }
+      }catch(e){console.error("Auto-refresh error",e);}
+    },15000);
+    return()=>clearInterval(interval);
+  },[products,selId]);
 
   const allOrders=convs.filter(c=>c.orders).flatMap(c=>c.orders.map(o=>({...o,client:c.cd?c.cd.surname+" "+c.cd.name:c.name,clientId:c.id,username:c.username})));
 
@@ -400,7 +460,7 @@ function App(){
           <div style={{display:"flex",gap:12,marginBottom:16}}>
             <Av name={conv.name} size={60}/>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:15}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div>
+              <div style={{fontWeight:700,fontSize:15}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div>
               <div style={{fontSize:13,color:T.textSec,marginBottom:8}}>@{conv.username}</div>
               {conv.cd&&<div style={{fontSize:12,color:T.textSec}}>📞 {conv.cd.phone||"—"}<br/>🏙 {conv.cd.city||"—"}</div>}
             </div>
@@ -537,7 +597,7 @@ const ProductsPage=()=>{
       {/* CLIENT */}
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Клієнт {conv.cd&&<span onClick={()=>setEditClient(conv.cd)} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>✎ Редагувати</span>}</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div><div style={{fontSize:15,fontWeight:700}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div></div>
+        <div style={{display:"flex",alignItems:"center",gap:12}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div><div style={{fontSize:15,fontWeight:700}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div></div>
         {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13,display:"grid",gridTemplateColumns:"auto 1fr",gap:"6px 12px"}}>
           {[["Тел",conv.cd.phone,"phone"],["Місто",conv.cd.city,"city"],["Відд.","№"+conv.cd.branch,"branch"],["Інста","@"+conv.username]].map(([k,v,f],i)=>
             <React.Fragment key={i}><span style={{color:T.textSec,fontWeight:500}}>{k}</span>{f?<input value={(v||"").replace("№","")} onChange={e=>updateClient(f,e.target.value)} style={{border:"none",borderBottom:`1px solid ${T.border}`,fontSize:13,outline:"none",padding:"2px 0",background:"transparent"}}/>:<span>{v}</span>}</React.Fragment>)}
@@ -646,7 +706,7 @@ const ProductsPage=()=>{
         {isMobile&&<span onClick={()=>setMobileView("list")} style={{fontSize:22,cursor:"pointer",padding:"2px 6px",color:T.textSec}}>←</span>}
         <Av name={conv.name} size={36} check={!!conv.cd} onClick={()=>{if(isMobile)setMobileView("client");else setClOpen(!clOpen);}}/>
         <div style={{flex:1,minWidth:0}} onClick={()=>{if(isMobile)setMobileView("client");}}>
-          <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default"}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div>
+          <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default"}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div>
         </div>
         {isMobile?<>
           <div onClick={()=>setFunnelOpen(!funnelOpen)} style={{padding:"7px 16px",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:"pointer",background:FNL.find(f=>f.id===conv.funnel)?.color||"#ccc",color:"#fff",minWidth:100,textAlign:"center",boxShadow:`0 2px 8px ${FNL.find(f=>f.id===conv.funnel)?.color||"#ccc"}40`}}>
@@ -666,27 +726,39 @@ const ProductsPage=()=>{
         {conv.msgs.map(msg=><div key={msg.id}>
           {msg.type==="comment"?
           /* ── COMMENT MESSAGE ── */
-          <div style={{display:"flex",justifyContent:"flex-start"}}><div style={{maxWidth:isMobile?300:440}}>
-            <div style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:16,padding:"10px 14px",position:"relative"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                <span style={{fontSize:14}}>📸</span>
-                <span style={{fontSize:11,fontWeight:700,color:"#92400e"}}>Коментар до посту</span>
-                {msg.mediaId&&<span style={{fontSize:10,color:"#b45309",background:"#fde68a",padding:"1px 6px",borderRadius:6}}>Post #{msg.mediaId.slice(-6)}</span>}
-              </div>
-              <div style={{fontSize:14,lineHeight:1.45,color:T.text,wordBreak:"break-word"}}>{msg.text}</div>
-              <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
-                <button onClick={()=>{setCommentReply({id:msg.commentId,text:msg.text});setCommentReplyText("");}} style={{padding:"5px 12px",borderRadius:10,background:"#fff",border:"1px solid #d97706",color:"#d97706",fontSize:11,fontWeight:600,cursor:"pointer"}}>💬 Відповісти в коментарях</button>
-                <button onClick={()=>{setInput("@"+msg.username+" ");}} style={{padding:"5px 12px",borderRadius:10,background:T.primary,border:"none",color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer"}}>✉️ Написати в ДМ</button>
+          (()=>{
+            /* Auto-fetch media for this comment's post */
+            if(msg.mediaId&&!mediaCache[msg.mediaId])setTimeout(()=>fetchMedia(msg.mediaId),0);
+            const media=msg.mediaId?mediaCache[msg.mediaId]:null;
+            const hasMedia=media&&typeof media==="object"&&media.media_url;
+            return <div style={{display:"flex",justifyContent:"flex-start"}}><div style={{maxWidth:isMobile?300:440}}>
+            <div style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:16,overflow:"hidden",position:"relative"}}>
+              {/* Post preview */}
+              {hasMedia&&<div style={{position:"relative"}}>
+                {media.media_type==="VIDEO"?
+                  <video src={media.media_url} controls style={{width:"100%",maxHeight:240,display:"block",objectFit:"cover"}}/>
+                :
+                  <img src={media.media_url} alt="" style={{width:"100%",maxHeight:240,display:"block",objectFit:"cover",cursor:"pointer"}} onClick={()=>media.permalink&&window.open(media.permalink,"_blank")}/>
+                }
+                <div style={{position:"absolute",top:8,left:8,background:"rgba(0,0,0,.6)",color:"#fff",padding:"2px 8px",borderRadius:8,fontSize:10,fontWeight:600}}>📸 Пост</div>
+              </div>}
+              {!hasMedia&&msg.mediaId&&media!=="loading"&&<div style={{padding:"10px 14px",background:"#fde68a",fontSize:11,color:"#92400e"}}>📸 Коментар до посту</div>}
+              {media==="loading"&&<div style={{padding:"10px 14px",background:"#fde68a",fontSize:11,color:"#92400e",textAlign:"center"}}>Завантаження посту...</div>}
+              <div style={{padding:"10px 14px"}}>
+                <div style={{fontSize:14,lineHeight:1.45,color:T.text,wordBreak:"break-word"}}>{msg.text}</div>
+                <div style={{marginTop:8}}>
+                  <button onClick={()=>{setCommentReply({id:msg.commentId,text:msg.text});setCommentReplyText("");}} style={{padding:"5px 12px",borderRadius:10,background:"#fff",border:"1px solid #d97706",color:"#d97706",fontSize:11,fontWeight:600,cursor:"pointer"}}>💬 Відповісти в коментарях</button>
+                </div>
               </div>
             </div>
             <div style={{fontSize:10,color:T.textMuted,marginTop:2}}>{msg.time}</div>
             {/* Inline comment reply */}
             {commentReply&&commentReply.id===msg.commentId&&<div style={{display:"flex",gap:6,marginTop:6}}>
-              <input value={commentReplyText} onChange={e=>setCommentReplyText(e.target.value)} placeholder="Ваша відповідь..." style={{flex:1,padding:"7px 12px",borderRadius:10,border:`1px solid ${T.border}`,fontSize:12,outline:"none"}}/>
+              <input value={commentReplyText} onChange={e=>setCommentReplyText(e.target.value)} placeholder="Ваша відповідь..." style={{flex:1,padding:"7px 12px",borderRadius:10,border:`1px solid ${T.border}`,fontSize:12,outline:"none"}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(!commentReplyText.trim())return;api("/api/comments/"+msg.commentId+"/reply",{method:"POST",body:JSON.stringify({text:commentReplyText})}).then(()=>{noti("Відповідь надіслано!");setCommentReply(null);setCommentReplyText("");});}}}/>
               <button onClick={()=>{if(!commentReplyText.trim())return;api("/api/comments/"+msg.commentId+"/reply",{method:"POST",body:JSON.stringify({text:commentReplyText})}).then(()=>{noti("Відповідь надіслано!");setCommentReply(null);setCommentReplyText("");});}} style={{padding:"6px 14px",borderRadius:10,background:T.primary,color:"#fff",border:"none",fontWeight:600,fontSize:12,cursor:"pointer"}}>↑</button>
               <button onClick={()=>setCommentReply(null)} style={{padding:"6px 10px",borderRadius:10,background:T.surfaceAlt,color:T.textSec,border:`1px solid ${T.border}`,fontSize:12,cursor:"pointer"}}>✕</button>
             </div>}
-          </div></div>
+          </div></div>})()
           :
           /* ── REGULAR / PHOTO MESSAGE ── */
           <div style={{display:"flex",justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}><div style={{position:"relative"}}>
@@ -835,7 +907,7 @@ const ProductsPage=()=>{
       {mobileView==="client"&&conv&&<div style={{width:"100%",display:"flex",flexDirection:"column",height:"100%"}} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="glass" style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
           <span onClick={()=>setMobileView("chat")} style={{fontSize:22,cursor:"pointer",color:T.textSec}}>←</span>
-          <span style={{fontWeight:700,fontSize:15,flex:1}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</span>
+          <span style={{fontWeight:700,fontSize:15,flex:1}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</span>
         </div>
         <RightPanel/>
       </div>}
