@@ -288,7 +288,7 @@ function App(){
         const[convsRaw,cmts,ordersRefresh,uPays,selMsgs]=await Promise.all(fetches);
         if(uPays&&Array.isArray(uPays))setUnmatchedPays(uPays);
         /* Refresh matched payments for selected conversation */
-        if(selId&&typeof selId==="number"){api("/api/payments/by-conversation/"+selId).then(mp=>{if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===selId?{...c,_matchedPays:mp}:c));});}
+        if(selId&&typeof selId==="number"){api("/api/payments/by-conversation/"+selId).then(mp=>{if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>{if(c.id!==selId)return c;const oldIds=(c._matchedPays||[]).map(x=>x.id).join(",");const newIds=mp.map(x=>x.id).join(",");if(oldIds===newIds)return c;return{...c,_matchedPays:mp};}));});}
 
         /* Update messages for selected conv — preserve scroll */
         if(selId&&selMsgs&&selMsgs.length>0){
@@ -603,8 +603,9 @@ function App(){
   /* ═══ PRODUCT PICKER COMPONENT ═══ */
 
   /* ═══ PAYMENT PICKER COMPONENT ═══ */
-  const PaymentPicker=({conv,curOrder,onMatch,noti})=>{
+  const PaymentPicker=({conv,curOrder,onMatch,noti,onReload})=>{
     const[pays,setPays]=useState([]);const[loading,setLoading]=useState(true);const[sel,setSel]=useState(null);const[search,setSearch]=useState("");const[syncing,setSyncing]=useState(false);
+    const convIdRef=useRef(conv.id);convIdRef.current=conv.id;
     const loadPays=async()=>{
       setLoading(true);
       const surname=(conv.cd?.surname||conv.name||"").trim();
@@ -624,9 +625,25 @@ function App(){
       }catch(e){noti("Помилка синхронізації");}
       setSyncing(false);
     };
-    const suggested=pays.filter(p=>p.match_score>=0.65);
-    const filtered=search?pays.filter(p=>(p.payer_name||"").toLowerCase().includes(search.toLowerCase())||String(p.amount).includes(search)):pays;
-    const rest=filtered.filter(p=>p.match_score<0.65);
+    const handleMatch=async(payId,ordId)=>{
+      const matchBody=ordId?{order_id:ordId}:{conversation_id:convIdRef.current};
+      const r=await api("/api/payments/"+payId+"/match",{method:"POST",body:JSON.stringify(matchBody)});
+      if(r&&r.status==="ok"){
+        if(r.fully_paid)noti("Оплату підтверджено повністю!");
+        else if(r.order_id)noti("Оплату додано до замовлення!");
+        else noti("Оплату прив'язано до клієнта!");
+        // Remove matched payment from local list immediately
+        setPays(prev=>prev.filter(x=>x.id!==payId));
+        setSel(null);
+        if(onReload)onReload(r);
+      }else noti("Помилка");
+    };
+    // Filter out already matched payments — only show available ones
+    const available=pays.filter(p=>!p.is_matched&&!p.matched_order_id&&!p.matched_conversation_id);
+    const suggested=available.filter(p=>p.match_score>=0.65);
+    const filtered=search?available.filter(p=>(p.payer_name||"").toLowerCase().includes(search.toLowerCase())||String(p.amount).includes(search)):available;
+    // Sort rest by date descending (newest first)
+    const rest=filtered.filter(p=>p.match_score<0.65).sort((a,b)=>(b.payment_date||"").localeCompare(a.payment_date||""));
     const fmtDate=d=>{if(!d)return"";try{const dt=new Date(d);return dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit"})+" "+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}catch(e){return d.split("T")[0]||""}};
     const srcBadge=s=>s==="monobank"?{bg:"#e0f2fe",color:"#0369a1",label:"🏦 Mono"}:{bg:"#fef3c7",color:"#92400e",label:"💳 WFP"};
     const PayRow=({p,accent})=>{const b=srcBadge(p.source);const isSel=sel===p.id;return <div onClick={()=>setSel(isSel?null:p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:isSel?(accent?T.accentLight:"#eff6ff"):T.surface,border:`1px solid ${isSel?(accent?T.accent:T.primary):T.border}`,borderRadius:10,marginBottom:4,cursor:"pointer",transition:"all .15s"}}>
@@ -639,8 +656,7 @@ function App(){
         </div>
         <div style={{fontSize:11,color:T.textSec,marginTop:2}}>{p.amount}₴ · {fmtDate(p.payment_date)}</div>
       </div>
-      {isSel&&!p.is_matched&&<button onClick={e=>{e.stopPropagation();onMatch(p.id,curOrder?.id)}} style={{padding:"5px 12px",background:accent?T.accent:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Підтвердити</button>}
-      {isSel&&p.is_matched&&<span style={{fontSize:10,color:T.accent,fontWeight:700,whiteSpace:"nowrap"}}>✅ Підтверджено</span>}
+      {isSel&&<button onClick={e=>{e.stopPropagation();handleMatch(p.id,curOrder?.id)}} style={{padding:"5px 12px",background:accent?T.accent:T.primary,color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>Підтвердити</button>}
     </div>};
     return <div style={{background:T.surfaceAlt,borderRadius:12,padding:10,marginTop:4,border:`1px solid ${T.border}`}}>
       {/* Search + Sync */}
@@ -650,7 +666,7 @@ function App(){
       </div>
       <div style={{maxHeight:300,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
         {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
-          {pays.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає оплат за останні 3 дні<br/><span style={{fontSize:11,color:T.primary,cursor:"pointer"}} onClick={doSync}>Натисніть 🔄 Sync щоб завантажити з Monobank</span></div>}
+          {available.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає вільних оплат за останні 3 дні<br/><span style={{fontSize:11,color:T.primary,cursor:"pointer"}} onClick={doSync}>Натисніть 🔄 Sync щоб завантажити з Monobank</span></div>}
           {!search&&suggested.length>0&&<div style={{marginBottom:6}}>
             <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>✨ Рекомендовані збіги:</div>
             {suggested.map(p=><PayRow key={p.id} p={p} accent/>)}
@@ -892,26 +908,21 @@ const ProductsPage=()=>{
         {conv._matchedPays&&conv._matchedPays.length>0&&<div style={{marginBottom:8}}>
           <div style={{fontSize:10,fontWeight:700,color:T.accent,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Підтверджені оплати:</div>
           {conv._matchedPays.map(p=>{const dt=p.payment_date?new Date(p.payment_date):null;const timeStr=dt?dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit"})+" "+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):"";return <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",background:T.accentLight,borderRadius:8,marginBottom:4,fontSize:12}}>
-            <div><span style={{fontWeight:600}}>{p.payer_name||"—"}</span> <span style={{color:T.textSec,fontSize:10}}>{p.source==="monobank"?"🏦":"💳"}</span>{timeStr&&<span style={{color:T.textSec,fontSize:10,marginLeft:4}}>{timeStr}</span>}</div>
-            <span style={{fontWeight:700,color:T.accent}}>+{p.amount}₴</span>
+            <div style={{flex:1,minWidth:0}}><span style={{fontWeight:600}}>{p.payer_name||"—"}</span> <span style={{color:T.textSec,fontSize:10}}>{p.source==="monobank"?"🏦":"💳"}</span>{timeStr&&<span style={{color:T.textSec,fontSize:10,marginLeft:4}}>{timeStr}</span>}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+              <span style={{fontWeight:700,color:T.accent}}>+{p.amount}₴</span>
+              <button onClick={async()=>{const r=await api("/api/payments/"+p.id+"/unmatch",{method:"POST"});if(r&&r.status==="ok"){noti("Оплату відкріплено");if(r.order_id&&r.new_paid!=null)updateOrder(r.order_id,{paid:r.new_paid});const mp=await api("/api/payments/by-conversation/"+selId);if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===selId?{...c,_matchedPays:mp}:c));}}} style={{padding:"2px 6px",background:"transparent",color:T.danger,border:"none",borderRadius:4,fontSize:11,cursor:"pointer",opacity:.6}} title="Відкріпити">✕</button>
+            </div>
           </div>})}
         </div>}
 
         {/* Payment picker — all recent payments */}
-        {payOpen&&<PaymentPicker conv={conv} curOrder={curOrder} onMatch={async(payId,ordId)=>{
-          const matchBody=ordId?{order_id:ordId}:{conversation_id:selId};
-          const r=await api("/api/payments/"+payId+"/match",{method:"POST",body:JSON.stringify(matchBody)});
-          if(r&&r.status==="ok"){
-            if(r.fully_paid)noti("Оплату підтверджено повністю!");
-            else if(r.order_id)noti("Оплату додано до замовлення!");
-            else noti("Оплату прив'язано до клієнта!");
-            setUnmatchedPays(prev=>prev.filter(x=>x.id!==payId));
-            if(ordId&&r.new_paid!=null)updateOrder(ordId,{paid:r.new_paid,status:r.fully_paid?"confirmed":(curOrder?curOrder.status:"payment")});
-            setPayOpen(false);
-            const mp=await api("/api/payments/by-conversation/"+selId);
-            if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===selId?{...c,_matchedPays:mp}:c));
-          }else noti("Помилка");
-        }} noti={noti}/>}
+        {payOpen&&<PaymentPicker conv={conv} curOrder={curOrder} noti={noti} onReload={async(r)=>{
+          setUnmatchedPays(prev=>prev.filter(x=>x.id!==(r?.payment_id)));
+          if(r?.order_id&&r.new_paid!=null)updateOrder(r.order_id,{paid:r.new_paid,status:r.fully_paid?"confirmed":(curOrder?curOrder.status:"payment")});
+          const mp=await api("/api/payments/by-conversation/"+selId);
+          if(mp&&Array.isArray(mp))setConvs(prev=>prev.map(c=>c.id===selId?{...c,_matchedPays:mp}:c));
+        }}/>}
       </div>
       {/* NOVA POSHTA */}
       <div style={{padding:16,background:T.surface}}>
