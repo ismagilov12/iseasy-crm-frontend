@@ -12,7 +12,8 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#f0ede6;color:#1a1a2e;font-size:14px;overflow:hidden;-webkit-user-select:none;user-select:none;letter-spacing:-.01em;padding-bottom:env(safe-area-inset-bottom,0)}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#c5c0b6;border-radius:10px}
-input,textarea,select{font-family:'Inter',sans-serif;-webkit-user-select:text;user-select:text}
+input,textarea,select{font-family:'Inter',sans-serif;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+input[type="text"],input[type="number"],input[type="tel"],input[type="date"],textarea,select{-webkit-appearance:none;appearance:none;font-size:16px!important}
 @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
 @keyframes countdownRing{0%{stroke-dashoffset:0}100%{stroke-dashoffset:88}}
 @keyframes repairGlow{0%,100%{box-shadow:0 0 8px rgba(234,179,8,.3)}50%{box-shadow:0 0 20px rgba(234,179,8,.6)}}
@@ -159,7 +160,7 @@ function App(){
   const[clientDialog,setClientDialog]=useState(null);/* {surname,name,city,branch,phone} */
   const[prodSaveSelect,setProdSaveSelect]=useState(null);/* Set of selected product ids for save */
 
-  const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const savedScrollRef=useRef(null);const scrollToBottom=()=>{if(chatBoxRef.current){chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
+  const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const savedScrollRef=useRef(null);const userScrolledUpRef=useRef(false);const scrollToBottom=(force)=>{if(chatBoxRef.current){if(!force&&userScrolledUpRef.current)return;chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
   const isEmptyCD=(cd)=>!cd||typeof cd!=="object"||(Object.keys(cd).length===0)||(!cd.surname&&!cd.name&&!cd.phone&&!cd.city&&!cd.branch);
   /* Save and restore chat scroll when toggling panels */
   const toggleClOpen=()=>{if(chatBoxRef.current)savedScrollRef.current=chatBoxRef.current.scrollTop;setClOpen(p=>!p);};
@@ -173,7 +174,10 @@ function App(){
   const confirmClientDialog=()=>{if(!clientDialog)return;const d={...clientDialog};delete d.msgText;mkClient(d);setClientDialog(null);};
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;}).sort((a,b)=>(b.lastTs||0)-(a.lastTs||0));
   const counts={};FNL.forEach(f=>{counts[f.id]=convs.filter(c=>c.funnel===f.id).length;});const unanswered=convs.filter(c=>c.lastDir==="in").length;
-  useEffect(()=>{const curLen=conv?.msgs?.length||0;const changed=selId!==prevSelId.current||curLen!==prevMsgLen.current;if(!changed)return;prevSelId.current=selId;prevMsgLen.current=curLen;scrollToBottom();const t1=setTimeout(scrollToBottom,150);const t2=setTimeout(scrollToBottom,500);const t3=setTimeout(scrollToBottom,1200);const t4=setTimeout(scrollToBottom,2500);return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4);};},[selId,conv?.msgs?.length]);
+  /* Detect if user scrolled up manually */
+  useEffect(()=>{const el=chatBoxRef.current;if(!el)return;const onScroll=()=>{const atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<80;userScrolledUpRef.current=!atBottom;};el.addEventListener("scroll",onScroll,{passive:true});return()=>el.removeEventListener("scroll",onScroll);},[selId]);
+  /* Scroll to bottom only on conversation change or genuinely new messages */
+  useEffect(()=>{const curLen=conv?.msgs?.length||0;const convChanged=selId!==prevSelId.current;const newMsgs=curLen>prevMsgLen.current;if(convChanged){userScrolledUpRef.current=false;prevSelId.current=selId;prevMsgLen.current=curLen;scrollToBottom(true);const t=setTimeout(()=>scrollToBottom(true),200);return()=>clearTimeout(t);}if(newMsgs){const lastMsg=conv?.msgs?.[conv.msgs.length-1];const isOutgoing=lastMsg&&lastMsg.dir==="out";if(isOutgoing)userScrolledUpRef.current=false;prevMsgLen.current=curLen;scrollToBottom();const t=setTimeout(scrollToBottom,200);return()=>clearTimeout(t);}},[selId,conv?.msgs?.length]);
   useEffect(()=>{setTimeout(()=>sosEnd.current?.scrollIntoView({behavior:"smooth"}),60);},[sosM.length]);
   const noti=useCallback(m=>{setNotif(m);setTimeout(()=>setNotif(null),2500);},[]);
 
@@ -244,10 +248,12 @@ function App(){
         if(selId&&typeof selId==="number"&&!isTyping)fetches.push(api("/api/conversations/"+selId+"/messages"));
         const[convsRaw,cmts,selMsgs]=await Promise.all(fetches);
 
-        /* Update messages for selected conv */
+        /* Update messages for selected conv — preserve scroll */
         if(selId&&selMsgs&&selMsgs.length>0){
           const mappedMsgs=selMsgs.map(m=>({id:m.id,dir:m.direction==="outgoing"?"out":"in",text:m.content||m.text||"",time:m.created_at?new Date(m.created_at).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}):m.time||"",ts:m.created_at?new Date(m.created_at).getTime():0,mediaUrl:m.media_url||"",msgType:m.message_type||"text"}));
+          const savedScroll=chatBoxRef.current?chatBoxRef.current.scrollTop:null;
           setConvs(prev=>prev.map(x=>{if(x.id!==selId)return x;const cmtMsgs=(x.msgs||[]).filter(m=>m.type==="comment");const all=[...mappedMsgs,...cmtMsgs].sort((a,b)=>(a.ts||0)-(b.ts||0));return{...x,msgs:all,_loaded:true};}));
+          if(savedScroll!==null&&userScrolledUpRef.current){requestAnimationFrame(()=>{if(chatBoxRef.current)chatBoxRef.current.scrollTop=savedScroll;});}
         }
 
         if(convsRaw&&convsRaw.length>0){
@@ -790,7 +796,7 @@ const ProductsPage=()=>{
         <span><b>🤖</b> Клієнт питає про строки</span>
         <button onClick={()=>setProdReq({conv})} style={{padding:"5px 12px",background:"#7c3aed",color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer"}}>🏭 Виробництво</button>
       </div>}
-      <div ref={chatBoxRef} style={{flex:1,overflowY:"auto",padding:"16px 16px",display:"flex",flexDirection:"column",gap:4,background:`linear-gradient(180deg, ${T.surfaceAlt} 0%, #f5f2ec 100%)`}}>
+      <div ref={chatBoxRef} style={{flex:1,overflowY:"auto",padding:"16px 16px",display:"flex",flexDirection:"column",gap:4,background:`linear-gradient(180deg, ${T.surfaceAlt} 0%, #f5f2ec 100%)`,WebkitOverflowScrolling:"touch"}}>
         {conv.msgs.map(msg=><div key={msg.id}>
           {msg.type==="comment"?
           /* ── COMMENT MESSAGE ── */
@@ -1103,7 +1109,38 @@ const ProductsPage=()=>{
     </div>}
   </div>;
 }
-ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+/* ═══ LOGIN SCREEN ═══ */
+function LoginScreen({onLogin}){
+  const[login,setLogin]=useState("");const[pass,setPass]=useState("");const[err,setErr]=useState("");const[loading,setLoading]=useState(false);
+  const doLogin=()=>{setLoading(true);setErr("");setTimeout(()=>{if(login.trim().toLowerCase()==="iseasy"&&pass==="iseasy94"){try{window.sessionStorage.setItem("ie_auth","1");}catch(e){}onLogin();}else{setErr("Невірний логін або пароль");setLoading(false);}},400);};
+  return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(145deg,#f0ede6 0%,#e8e4db 50%,#ddd8cc 100%)",padding:20}}>
+    <div style={{background:"#fff",borderRadius:24,padding:"40px 32px",width:380,maxWidth:"100%",boxShadow:"0 12px 48px rgba(0,0,0,.1)",animation:"fadeIn .4s ease"}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontSize:28,fontWeight:900,letterSpacing:"-0.02em",marginBottom:4}}>IS EASY</div>
+        <div style={{display:"inline-block",fontSize:10,background:"#4f46e5",color:"#fff",padding:"3px 12px",borderRadius:6,fontWeight:700,letterSpacing:1}}>CRM</div>
+        <div style={{marginTop:12,fontSize:13,color:"#8a8578"}}>Вхід до системи</div>
+      </div>
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:12,fontWeight:600,color:"#8a8578",display:"block",marginBottom:4}}>Логін</label>
+        <input value={login} onChange={e=>{setLogin(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")doLogin();}} placeholder="Введіть логін" autoFocus style={{width:"100%",padding:"12px 16px",border:"1px solid #eae7e0",borderRadius:12,fontSize:16,outline:"none",background:"#faf8f5"}}/>
+      </div>
+      <div style={{marginBottom:20}}>
+        <label style={{fontSize:12,fontWeight:600,color:"#8a8578",display:"block",marginBottom:4}}>Пароль</label>
+        <input type="password" value={pass} onChange={e=>{setPass(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")doLogin();}} placeholder="Введіть пароль" style={{width:"100%",padding:"12px 16px",border:"1px solid #eae7e0",borderRadius:12,fontSize:16,outline:"none",background:"#faf8f5"}}/>
+      </div>
+      {err&&<div style={{color:"#ef4444",fontSize:13,fontWeight:600,marginBottom:12,textAlign:"center"}}>{err}</div>}
+      <button onClick={doLogin} disabled={loading} style={{width:"100%",padding:"13px",background:loading?"#999":"#4f46e5",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 16px rgba(79,70,229,.3)",transition:"all .2s"}}>{loading?"Вхід...":"Увійти"}</button>
+    </div>
+  </div>;
+}
+
+function Root(){
+  const[authed,setAuthed]=useState(()=>{try{return window.sessionStorage.getItem("ie_auth")==="1";}catch(e){return false;}});
+  if(!authed)return <LoginScreen onLogin={()=>setAuthed(true)}/>;
+  return <App/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><Root/></ErrorBoundary>);
 </script>
 </body>
 </html>
