@@ -744,7 +744,7 @@ const ProductsPage=()=>{
               {c.is_reply&&<span className="badge" style={{marginLeft:8,background:T.primaryLight,color:T.primary,fontSize:10}}>відповідь</span>}
               <div style={{fontSize:11,color:T.textSec}}>{c.created_at?new Date(c.created_at).toLocaleString("uk",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</div>
             </div>
-            {!c.is_reply&&c.instagram_user_id!==INSTAGRAM_BUSINESS_ID&&<button onClick={()=>{setCommentReply(c);setCommentReplyText("");}} style={{padding:"6px 14px",borderRadius:T.btnRadius,background:T.primaryLight,color:T.primary,border:"none",fontWeight:600,fontSize:12,cursor:"pointer"}}>Відповісти</button>}
+            {!c.is_reply&&c.instagram_user_id!=="17841465693388986"&&<button onClick={()=>{setCommentReply(c);setCommentReplyText("");}} style={{padding:"6px 14px",borderRadius:T.btnRadius,background:T.primaryLight,color:T.primary,border:"none",fontWeight:600,fontSize:12,cursor:"pointer"}}>Відповісти</button>}
           </div>
           <p style={{fontSize:14,lineHeight:1.5,color:T.text}}>{c.text}</p>
           {commentReply&&commentReply.id===c.id&&<div style={{marginTop:12,display:"flex",gap:8}}>
