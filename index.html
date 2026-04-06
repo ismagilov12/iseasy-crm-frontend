@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',sans-serif;background:#f0ede6;color:#1a1a2e;font-size:14px;overflow:hidden;-webkit-user-select:none;user-select:none;letter-spacing:-.01em}
+body{font-family:'Inter',sans-serif;background:#f0ede6;color:#1a1a2e;font-size:14px;overflow:hidden;-webkit-user-select:none;user-select:none;letter-spacing:-.01em;padding-bottom:env(safe-area-inset-bottom,0)}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#c5c0b6;border-radius:10px}
 input,textarea,select{font-family:'Inter',sans-serif;-webkit-user-select:text;user-select:text}
 @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
@@ -18,6 +18,8 @@ input,textarea,select{font-family:'Inter',sans-serif;-webkit-user-select:text;us
 @keyframes repairGlow{0%,100%{box-shadow:0 0 8px rgba(234,179,8,.3)}50%{box-shadow:0 0 20px rgba(234,179,8,.6)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideInLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 .repair-mode{filter:grayscale(1)!important;transition:filter .3s}
 .repair-pin{position:absolute;width:24px;height:24px;background:#eab308;border:2px solid #854d0e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#854d0e;cursor:pointer;z-index:50;transform:translate(-50%,-50%);animation:repairGlow 2s infinite}
 table{width:100%;border-collapse:separate;border-spacing:0}th,td{text-align:left;padding:10px 14px;border-bottom:1px solid #eae7e0;font-size:13px}th{font-weight:600;color:#8a8578;font-size:11px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:#faf8f5;z-index:2}
@@ -138,7 +140,7 @@ function App(){
   const[page,setPage]=useState("crm");const[settingsTab,setSettingsTab]=useState("integrations");
   const[autos,setAutos]=useState(DEFAULT_AUTOMATIONS);const[autoInput,setAutoInput]=useState("");
   const[prodReq,setProdReq]=useState(null);const[prodDate,setProdDate]=useState("");
-  const[mobileView,setMobileView]=useState("list");const[funnelOpen,setFunnelOpen]=useState(false);const[funnelPending,setFunnelPending]=useState(null);
+  const[mobileView,setMobileView]=useState("list");const[funnelOpen,setFunnelOpen]=useState(false);const[funnelPending,setFunnelPending]=useState(null);const[slideDir,setSlideDir]=useState("right");/* "left" or "right" for animation direction */
   const[menuOpen,setMenuOpen]=useState(false);
   const[editClient,setEditClient]=useState(null);
   const[orderTypeModal,setOrderTypeModal]=useState(null);
@@ -324,7 +326,7 @@ function App(){
     api("/api/conversations/"+selId+"/messages",{method:"POST",body:JSON.stringify({text:prodText,image_url:pr.img||"",quick_replies:[{title:"✅ Підтвердити",payload:"CONFIRM_ORDER"}]})});
     api("/api/orders",{method:"POST",body:JSON.stringify({conversation_id:selId,product_id:pr.id,size:sz,total:pr.price||0,paid:0,status:"new",type:"order"})});
     noti("Товар додано в замовлення!");}catch(e){console.error("addOrder error",e);noti("Помилка додавання товару");}};
-  const removeOrder=(oid)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).filter(o=>o.id!==oid)}:c));noti("Замовлення видалено");};
+  const removeOrder=(oid)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).filter(o=>o.id!==oid)}:c));api("/api/orders/"+oid,{method:"DELETE"});noti("Замовлення видалено");};
   const updateOrder=(oid,upd)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).map(o=>o.id===oid?{...o,...upd}:o)}:c));
     api("/api/orders/"+oid,{method:"PATCH",body:JSON.stringify(upd)});};
   const matchPay=(pid,oid)=>{const pay=pays.find(p=>p.id===pid);const ord=(conv?.orders||[]).find(o=>o.id===oid);if(!pay||!ord)return;setMatched(prev=>new Set([...prev,pid]));const np=(ord.paid||0)+pay.amount;const full=np>=ord.total;updateOrder(oid,{paid:np,status:full?"confirmed":"payment"});if(full)noti("Оплату підтверджено повністю!");else noti("Оплату додано!");setPayOpen(false);
@@ -406,7 +408,7 @@ function App(){
         if(isEmptyCD(x.cd)){for(let i=all.length-1;i>=0;i--){if(all[i].dir==="in"&&!all[i].type){const d=parseCD(all[i].text);if(d&&(d.surname||d.phone)){api("/api/clients",{method:"POST",body:JSON.stringify({...d,conversation_id:id})});return{...x,msgs:all,_loaded:true,cd:d,funnel:x.funnel==="new"?"processing":x.funnel};}}}}
         return{...x,msgs:all,_loaded:true};}));}});
   };
-  const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(false);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile)setMobileView("chat");
+  const selectConv=(id)=>{setSelId(id);setConvs(p=>p.map(x=>x.id===id?{...x,unread:0}:x));setClOpen(false);setEditPr(false);setPayOpen(false);setFunnelPending(null);if(isMobile){setSlideDir("right");setMobileView("chat");}
     api("/api/conversations/"+id+"/read",{method:"POST"});
     loadMsgs(id);
   };
@@ -425,7 +427,7 @@ function App(){
 
   const handleTouchStart=(e)=>{touchStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};
   const handleTouchEnd=(e)=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;const dy=e.changedTouches[0].clientY-touchStart.current.y;if(Math.abs(dx)<50||Math.abs(dy)>Math.abs(dx))return;
-    if(mobileView==="chat"){if(dx<-50)setMobileView("client");if(dx>50)setMobileView("list");}else if(mobileView==="client"&&dx>50)setMobileView("chat");touchStart.current=null;};
+    if(mobileView==="chat"){if(dx<-50){setSlideDir("right");setMobileView("client");}if(dx>50){setSlideDir("left");setMobileView("list");}}else if(mobileView==="client"&&dx>50){setSlideDir("left");setMobileView("chat");}touchStart.current=null;};
 
   const handleProductionConfirm=()=>{if(!prodReq||!prodDate)return;const c=prodReq.conv;const diff=Math.floor((new Date(prodDate)-new Date(c.orders[0].date))/(1000*60*60*24));
     let msg="Доброго дня! Ваше замовлення буде готове "+prodDate+".";if(diff>9)msg+="\n\nВибачте за затримку! Промокод: SORRY10 (-10%)";msg+="\n\nДякуємо за терпіння! ❤️";
@@ -563,10 +565,14 @@ function App(){
           <option value="all">Всі категорії</option>
           {categories.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
-        <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:10}}>
-          {filtered.map(p=>(<div key={p.id} onClick={()=>onSelect(p)} style={{background:T.surfaceAlt,borderRadius:T.cardRadius,overflow:"hidden",cursor:"pointer",border:`2px solid ${T.border}`,transition:"all .15s"}}>
-            <img src={p.img} alt={p.name} style={{width:"100%",height:100,objectFit:"cover"}}/>
-            <div style={{padding:"6px",fontSize:10,fontWeight:600,textAlign:"center"}}>{p.name.substring(0,15)}</div>
+        <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(p=>(<div key={p.id} onClick={()=>onSelect(p)} style={{background:T.surfaceAlt,borderRadius:T.cardRadius,cursor:"pointer",border:`2px solid ${T.border}`,transition:"all .15s",display:"flex",alignItems:"center",gap:10,padding:8}}>
+            <div style={{width:50,height:50,borderRadius:10,overflow:"hidden",flexShrink:0,background:T.surface,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{p.img?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"👟"}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.primary}}>{p.sku}</div>
+              <div style={{fontSize:11,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+              <div style={{fontSize:12,fontWeight:700}}>{p.price}₴</div>
+            </div>
           </div>))}
         </div>
       </div>
@@ -600,18 +606,17 @@ const ProductsPage=()=>{
               {categories.map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:16}}>
-            {filt.map(p=>(<div key={p.id} style={{background:T.surface,borderRadius:T.cardRadius,overflow:"hidden",boxShadow:T.shadow}}>
-              <img src={p.img} alt={p.name} style={{width:"100%",height:140,objectFit:"cover"}}/>
-              <div style={{padding:"8px"}}>
-                <div style={{fontSize:12,fontWeight:600,lineHeight:1.2,minHeight:24,marginBottom:4}}>{p.name}</div>
-                <div style={{fontSize:10,color:T.textSec,marginBottom:6}}>{p.sku}</div>
-                <div style={{fontSize:11,marginBottom:6}}>{p.cost}₴ | {p.price}₴</div>
-                <div style={{display:"flex",gap:4}}>
-                  <button onClick={()=>setEditingProd(p)} style={{flex:1,padding:"4px",fontSize:10,background:T.primary,color:"#fff",border:"none",borderRadius:6,cursor:"pointer"}}>✎</button>
-                  <button onClick={()=>dupProd(p)} style={{flex:1,padding:"4px",fontSize:10,background:T.primaryLight,color:T.primary,border:"none",borderRadius:6,cursor:"pointer"}}>📋</button>
-                  <button onClick={()=>handleDeleteProduct(p.id)} style={{flex:1,padding:"4px",fontSize:10,background:T.dangerLight,color:T.danger,border:"none",borderRadius:6,cursor:"pointer"}}>✕</button>
-                </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+            {filt.map(p=>(<div key={p.id} style={{background:T.surface,borderRadius:T.cardRadius,overflow:"hidden",boxShadow:T.shadow,display:"flex",alignItems:"center",gap:10,padding:8}}>
+              <div style={{width:56,height:56,borderRadius:12,overflow:"hidden",flexShrink:0,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{p.img?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.parentNode.innerText="👟";}}/>:"👟"}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:T.primary,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.sku}</div>
+                <div style={{fontSize:12,fontWeight:500,lineHeight:1.2,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                <div style={{fontSize:12,fontWeight:700,marginTop:2}}>{p.price}₴ <span style={{fontWeight:400,color:T.textSec,fontSize:11}}>| с/в {p.cost}₴</span></div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+                <button onClick={()=>setEditingProd(p)} style={{padding:"5px 10px",fontSize:10,background:T.primary,color:"#fff",border:"none",borderRadius:6,cursor:"pointer"}}>✎</button>
+                <button onClick={()=>handleDeleteProduct(p.id)} style={{padding:"5px 10px",fontSize:10,background:T.dangerLight,color:T.danger,border:"none",borderRadius:6,cursor:"pointer"}}>✕</button>
               </div>
             </div>))}
           </div>
@@ -766,9 +771,9 @@ const ProductsPage=()=>{
     onTouchStart={isMobile?handleTouchStart:undefined} onTouchEnd={isMobile?handleTouchEnd:undefined}>
     {conv?<>
       <div className="glass" style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-        {isMobile&&<span onClick={()=>setMobileView("list")} style={{fontSize:22,cursor:"pointer",padding:"2px 6px",color:T.textSec}}>←</span>}
-        <Av name={conv.name} size={36} check={!!conv.cd} onClick={()=>{if(isMobile)setMobileView("client");else toggleClOpen();}}/>
-        <div style={{flex:1,minWidth:0}} onClick={()=>{if(isMobile)setMobileView("client");}}>
+        {isMobile&&<span onClick={()=>{setSlideDir("left");setMobileView("list");}} style={{fontSize:22,cursor:"pointer",padding:"2px 6px",color:T.textSec}}>←</span>}
+        <Av name={conv.name} size={36} check={!!conv.cd} onClick={()=>{if(isMobile){setSlideDir("right");setMobileView("client");}else toggleClOpen();}}/>
+        <div style={{flex:1,minWidth:0}} onClick={()=>{if(isMobile){setSlideDir("right");setMobileView("client");}}}>
           <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default"}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</div>
         </div>
         {isMobile?<>
@@ -790,23 +795,20 @@ const ProductsPage=()=>{
           {msg.type==="comment"?
           /* ── COMMENT MESSAGE ── */
           (()=>{
-            /* Auto-fetch media for this comment's post */
-            if(msg.mediaId&&!mediaCache[msg.mediaId])setTimeout(()=>fetchMedia(msg.mediaId),0);
+            /* Media disabled — no auto-fetch, show on demand only */
             const media=msg.mediaId?mediaCache[msg.mediaId]:null;
             const hasMedia=media&&typeof media==="object"&&media.media_url;
             return <div style={{display:"flex",justifyContent:"flex-start"}}><div style={{maxWidth:isMobile?300:440}}>
             <div style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:16,overflow:"hidden",position:"relative"}}>
-              {/* Post preview */}
+              {/* Post indicator — no auto-load */}
               {hasMedia&&<div style={{position:"relative"}}>
                 {media.media_type==="VIDEO"?
-                  <video src={media.media_url} controls preload="none" style={{width:"100%",maxHeight:240,display:"block",objectFit:"cover"}}/>
+                  <div style={{padding:"10px 14px",background:"#fde68a",fontSize:11,color:"#92400e",display:"flex",alignItems:"center",gap:6}}>🎬 Відео до посту <button onClick={()=>{const w=window.open(media.media_url,"_blank");}} style={{marginLeft:"auto",padding:"3px 10px",borderRadius:8,background:"#fff",border:"1px solid #d97706",color:"#d97706",fontSize:10,fontWeight:600,cursor:"pointer"}}>Відкрити</button></div>
                 :
-                  <img src={media.media_url} alt="" style={{width:"100%",maxHeight:240,display:"block",objectFit:"cover",cursor:"pointer"}} onClick={()=>media.permalink&&window.open(media.permalink,"_blank")}/>
+                  <div style={{padding:"10px 14px",background:"#fde68a",fontSize:11,color:"#92400e",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}} onClick={()=>media.permalink&&window.open(media.permalink,"_blank")}>📸 Фото до посту <button style={{marginLeft:"auto",padding:"3px 10px",borderRadius:8,background:"#fff",border:"1px solid #d97706",color:"#d97706",fontSize:10,fontWeight:600,cursor:"pointer"}}>Відкрити</button></div>
                 }
-                <div style={{position:"absolute",top:8,left:8,background:"rgba(0,0,0,.6)",color:"#fff",padding:"2px 8px",borderRadius:8,fontSize:10,fontWeight:600}}>📸 Пост</div>
               </div>}
-              {!hasMedia&&msg.mediaId&&media!=="loading"&&<div style={{padding:"10px 14px",background:"#fde68a",fontSize:11,color:"#92400e"}}>📸 Коментар до посту</div>}
-              {media==="loading"&&<div style={{padding:"10px 14px",background:"#fde68a",fontSize:11,color:"#92400e",textAlign:"center"}}>Завантаження посту...</div>}
+              {!hasMedia&&msg.mediaId&&<div style={{padding:"10px 14px",background:"#fde68a",fontSize:11,color:"#92400e",display:"flex",alignItems:"center",gap:6}}>📸 Коментар до посту {media!=="loading"&&<button onClick={()=>fetchMedia(msg.mediaId)} style={{marginLeft:"auto",padding:"3px 10px",borderRadius:8,background:"#fff",border:"1px solid #d97706",color:"#d97706",fontSize:10,fontWeight:600,cursor:"pointer"}}>Показати</button>}{media==="loading"&&<span style={{marginLeft:"auto",fontSize:10}}>⏳</span>}</div>}
               <div style={{padding:"10px 14px"}}>
                 <div style={{fontSize:14,lineHeight:1.45,color:T.text,wordBreak:"break-word"}}>{msg.text}</div>
                 <div style={{marginTop:8}}>
@@ -859,9 +861,8 @@ const ProductsPage=()=>{
             <button onClick={()=>mkClient(d)} style={{marginTop:8,padding:"7px 16px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:12}}>Створити клієнта</button></div>})()}
         </div>)}<div ref={ce}/></div>
       {/* INPUT */}
-      <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 14px",background:T.surface,flexShrink:0}}>
+      <div style={{borderTop:`1px solid ${T.border}`,padding:isMobile?"10px 10px calc(10px + env(safe-area-inset-bottom, 0px))":"10px 14px",background:T.surface,flexShrink:0}}>
         {showQR&&<div className="card" style={{padding:6,marginBottom:8,maxHeight:140,overflowY:"auto",boxShadow:T.shadowMd}}>{QR.map(q=><div key={q.id} onClick={()=>{send(q.tx);setShowQR(false);}} style={{padding:"7px 12px",cursor:"pointer",borderRadius:8,fontSize:13,transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{q.t}</div>)}</div>}
-        {showProdPicker&&<ProductPicker onSelect={(p)=>{setProdModal(p);setSelSize(null);setShowProdPicker(false);}} onClose={()=>setShowProdPicker(false)}/>}
         {/* Photo preview */}
         {attachImg&&<div style={{marginBottom:8,position:"relative",display:"inline-block"}}>
           <img src={attachImg.preview} alt="" style={{maxHeight:120,borderRadius:12,border:`1px solid ${T.border}`}}/>
@@ -967,11 +968,11 @@ const ProductsPage=()=>{
 
     {/* MAIN */}
     {isMobile?<div style={{flex:1,overflow:"hidden",display:"flex"}}>
-      {mobileView==="list"&&<ChatList full/>}
-      {mobileView==="chat"&&<ChatArea full/>}
-      {mobileView==="client"&&conv&&<div style={{width:"100%",display:"flex",flexDirection:"column",height:"100%"}} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      {mobileView==="list"&&<div style={{width:"100%",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}><ChatList full/></div>}
+      {mobileView==="chat"&&<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}><ChatArea full/></div>}
+      {mobileView==="client"&&conv&&<div style={{width:"100%",display:"flex",flexDirection:"column",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="glass" style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-          <span onClick={()=>setMobileView("chat")} style={{fontSize:22,cursor:"pointer",color:T.textSec}}>←</span>
+          <span onClick={()=>{setSlideDir("left");setMobileView("chat");}} style={{fontSize:22,cursor:"pointer",color:T.textSec}}>←</span>
           <span style={{fontWeight:700,fontSize:15,flex:1}}>{conv.cd&&(conv.cd.surname||conv.cd.name)?(conv.cd.surname||"")+" "+(conv.cd.name||""):conv.name||conv.username||"?"}</span>
         </div>
         <RightPanel/>
@@ -1026,6 +1027,9 @@ const ProductsPage=()=>{
       </div>
     </div>}
 
+    {/* PRODUCT PICKER (global — works from chat input AND client card) */}
+    {showProdPicker&&<ProductPicker onSelect={(p)=>{setProdModal(p);setSelSize(null);setShowProdPicker(false);}} onClose={()=>setShowProdPicker(false)}/>}
+
     {/* PRODUCT MODAL */}
     {prodModal&&<div onClick={()=>{setProdModal(null);setSelSize(null);}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,borderRadius:20,padding:26,width:400,maxWidth:"100%",boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>
@@ -1046,7 +1050,7 @@ const ProductsPage=()=>{
           <div key={k} style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{l}</label>
             <input value={editClient[k]||""} onChange={e=>setEditClient(p=>({...p,[k]:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/></div>)}
         <div style={{display:"flex",gap:10,marginTop:10}}><button onClick={()=>setEditClient(null)} style={{padding:"10px 18px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
-          <button onClick={()=>{setConvs(p=>p.map(c=>c.id===selId?{...c,cd:editClient}:c));setEditClient(null);noti("Збережено!");}} style={{padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer"}}>Зберегти</button>
+          <button onClick={()=>{setConvs(p=>p.map(c=>c.id===selId?{...c,cd:editClient}:c));if(editClient?.id)api("/api/clients/"+editClient.id,{method:"PATCH",body:JSON.stringify(editClient)});else if(selId)api("/api/clients",{method:"POST",body:JSON.stringify({...editClient,conversation_id:selId})});setEditClient(null);noti("Збережено!");}} style={{padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer"}}>Зберегти</button>
         </div>
       </div>
     </div>}
