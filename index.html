@@ -108,14 +108,17 @@ const T={
 };
 
 /* ═══ HELPERS ═══ */
-function parseCD(t){if(!t||t.length<10)return null;t=t.replace(/\s+/g," ").trim();
-  const phM=t.match(/(?:\+?38)?[\s-]?0[\s-]?\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}|(?:\+?38)?[\s-]?0\d{9}/);const phone=phM?phM[0].replace(/[\s-]/g,""):"";
-  const brRe=/(?:від(?:ділення|діл)|отделение|отдел|№)\s*(\d{1,4})|(\d{1,4})\s*(?:від(?:ділення|діл)|отделение|відд)/i;const brM=t.match(brRe);const branch=brM?(brM[1]||brM[2]):"";
-  const cities=["Київ","Киев","Харків","Харьков","Одеса","Одесса","Дніпро","Днепр","Львів","Львов","Запоріжжя","Полтава","Вінниця","Чернігів","Черкаси","Суми","Рівне","Житомир","Тернопіль","Ужгород","Хмельницький","Кропивницький","Луцьк","Маріуполь"];
+function parseCD(t){if(!t||t.length<8)return null;t=t.replace(/\s+/g," ").trim();
+  const phM=t.match(/(?:\+?38)?[\s-]?0[\s-]?\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}|(?:\+?38)?[\s-]?0\d{9}|\+?380\d{9}/);const phone=phM?phM[0].replace(/[\s-]/g,""):"";
+  const brRe=/(?:від(?:ділення|діл)|отделение|отдел|відд\.?|пошт\.?|нп|НП|№)\s*[#№]?(\d{1,4})|(\d{1,4})\s*(?:від(?:ділення|діл)|отделение|відд\.?)/i;const brM=t.match(brRe);let branch=brM?(brM[1]||brM[2]):"";
+  if(!branch){const numAfterCity=t.match(/[А-ЯІЇЄҐа-яіїєґ]\s+(\d{1,4})\s/);if(numAfterCity&&parseInt(numAfterCity[1])<=999)branch=numAfterCity[1];}
+  const cities=["Київ","Киев","Харків","Харьков","Одеса","Одесса","Дніпро","Днепр","Львів","Львов","Запоріжжя","Полтава","Вінниця","Чернігів","Черкаси","Суми","Рівне","Житомир","Тернопіль","Ужгород","Хмельницький","Кропивницький","Луцьк","Маріуполь","Миколаїв","Херсон","Івано-Франківськ","Чернівці","Біла Церква","Кременчук","Мелітополь","Нікополь","Бердянськ","Ковель","Калуш","Коростень","Сміла","Конотоп","Ніжин","Умань","Шостка","Олександрія","Новомосковськ","Павлоград","Бровари","Ірпінь","Буча","Обухів","Вишгород","Фастів","Боярка","Васильків","Славутич"];
   const ciRe=new RegExp("("+cities.join("|")+")","i");const ciM=t.match(ciRe);const city=ciM?ciM[1]:"";
-  let nt=t;if(phM)nt=nt.replace(phM[0],"");if(brM)nt=nt.replace(brRe,"");if(ciM)nt=nt.replace(ciRe,"");nt=nt.replace(/від(?:ділення|діл)|отделение|отдел|№/gi,"").replace(/\s+/g," ").trim();
-  const nmM=nt.match(/([А-ЯІЇЄҐа-яіїєґ]{2,})\s+([А-ЯІЇЄҐа-яіїєґ]{2,})/);let surname="",name="";if(nmM){surname=nmM[1];name=nmM[2];}
-  if(!((surname&&name)||phone||(city&&branch)))return null;return{surname,name,city,branch,phone};}
+  let nt=t;if(phM)nt=nt.replace(phM[0],"");if(brM)nt=nt.replace(brRe,"");if(ciM)nt=nt.replace(ciRe,"");nt=nt.replace(/від(?:ділення|діл)|отделение|отдел|відд\.?|пошт\.?|нп|НП|№|#/gi,"").replace(/\d{1,4}/,"").replace(/\s+/g," ").trim();
+  const nmM=nt.match(/([А-ЯІЇЄҐа-яіїєґ''-]{2,})\s+([А-ЯІЇЄҐа-яіїєґ''-]{2,})/);let surname="",name="";if(nmM){surname=nmM[1];name=nmM[2];}
+  if(!surname&&!name){const singleName=nt.match(/([А-ЯІЇЄҐа-яіїєґ''-]{2,})/);if(singleName&&(phone||city))name=singleName[1];}
+  if(!((surname||name)||phone||(city&&branch)))return null;if(!phone&&!city&&!branch)return null;return{surname,name,city,branch,phone};}
+function clientDisplayName(cd,fallback){if(!cd)return fallback||"—";const s=cd.surname||"";const n=cd.name||"";return(s+" "+n).trim()||cd.phone||fallback||"—";}
 function norm(n){return n.toLowerCase().replace(/ё/g,"е").replace(/[ъь]/g,"").replace(/і/g,"и").replace(/ї/g,"и").replace(/є/g,"е").replace(/ґ/g,"г").replace(/[^а-яa-z]/g,"");}
 function fuzzy(a,b){const na=norm(a),nb=norm(b);if(!na||!nb)return false;if(na===nb||na.includes(nb)||nb.includes(na))return true;if(Math.abs(na.length-nb.length)>2)return false;let d=0;for(let i=0;i<Math.max(na.length,nb.length);i++){if(na[i]!==nb[i])d++;}return d<=2;}
 function useIsMobile(){const[m,setM]=useState(window.innerWidth<=768);useEffect(()=>{const h=()=>setM(window.innerWidth<=768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);return m;}
@@ -157,6 +160,7 @@ function App(){
   const[showProdPicker,setShowProdPicker]=useState(false);const[prodPickerSearch,setProdPickerSearch]=useState("");const[prodPickerCat,setProdPickerCat]=useState("all");
   const[showMobileClientCard,setShowMobileClientCard]=useState(false);
   const[comments,setComments]=useState([]);const[commentReply,setCommentReply]=useState(null);const[commentReplyText,setCommentReplyText]=useState("");
+  const[ctxMenu,setCtxMenu]=useState(null);const longPressTimer=useRef(null);const longPressMsg=useRef(null);
 
   const sosEnd=useRef(null);const ce=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);
   const filtered=convs.filter(c=>{if(channel!=="all"&&c.channel!==channel)return false;if(filter==="unanswered")return c.lastDir==="in";if(filter!=="all"&&!["unanswered"].includes(filter)&&c.funnel!==filter)return false;if(search){const s=search.toLowerCase();return c.name.toLowerCase().includes(s)||c.username.toLowerCase().includes(s);}return true;});
@@ -193,7 +197,7 @@ function App(){
     })();
   },[]);
 
-  const allOrders=convs.filter(c=>c.orders).flatMap(c=>c.orders.map(o=>({...o,client:c.cd?c.cd.surname+" "+c.cd.name:c.name,clientId:c.id,username:c.username})));
+  const allOrders=convs.filter(c=>c.orders).flatMap(c=>c.orders.map(o=>({...o,client:clientDisplayName(c.cd,c.name),clientId:c.id,username:c.username})));
 
   const send=text=>{if(!text.trim()||!conv)return;const t=text.trim();setConvs(p=>p.map(c=>c.id===selId?{...c,msgs:[...c.msgs,{id:Date.now(),dir:"out",text:t,time:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}],lastMsg:t,lastTime:new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"}),lastDir:"out",unread:0}:c));setInput("");setShowQR(false);setShowProds(false);
     api("/api/conversations/"+selId+"/messages",{method:"POST",body:JSON.stringify({text:t})});};
@@ -218,7 +222,7 @@ function App(){
     if(!npSettings.apiKey||!npSettings.connected){noti("Спочатку налаштуйте Нова Пошта в налаштуваннях!");return;}
     const ord=(conv?.orders||[]).find(o=>o.id===oid);if(!ord)return;
     const cd=conv?.cd;if(!cd||!cd.phone){noti("Заповніть дані клієнта (телефон)!");return;}
-    const recipientName=(cd.surname||"")+" "+(cd.name||"");
+    const recipientName=clientDisplayName(cd,conv.name);
     const codAmount=(ord.paid>=ord.total)?0:(ord.total-(ord.paid||0));
     // Find city ref
     let cityRef=cd.cityRef||"";
@@ -294,6 +298,11 @@ function App(){
       else if(t.includes("статистик")){const rev=allOrders.reduce((s,o)=>s+(o.total||0),0);r="📊 Чатів: "+convs.length+" | Замовлень: "+allOrders.length+" | Сума: "+rev+" грн";}
       else r="Команди: знайди, статистика, як відповісти";
       setSosM(p=>[...p,{id:Date.now()+1,role:"ai",text:r}]);setSosTyp(false);},600);};
+
+  const handleMsgContext=(e,msg)=>{if(repair)return;e.preventDefault();e.stopPropagation();const d=parseCD(msg.text);const x=e.clientX||e.pageX||0;const y=e.clientY||e.pageY||0;setCtxMenu({x:Math.min(x,window.innerWidth-220),y:Math.min(y,window.innerHeight-120),msg,parsed:d});};
+  const handleMsgTouchStart=(e,msg)=>{longPressMsg.current=msg;longPressTimer.current=setTimeout(()=>{const touch=e.touches[0];const d=parseCD(msg.text);setCtxMenu({x:Math.min(touch.clientX,window.innerWidth-220),y:Math.min(touch.clientY-60,window.innerHeight-120),msg,parsed:d});longPressMsg.current=null;},500);};
+  const handleMsgTouchEnd=()=>{if(longPressTimer.current){clearTimeout(longPressTimer.current);longPressTimer.current=null;}};
+  useEffect(()=>{if(!ctxMenu)return;const close=()=>setCtxMenu(null);window.addEventListener("click",close);return()=>window.removeEventListener("click",close);},[ctxMenu]);
 
   let det=null;if(conv&&!conv.cd){for(let i=conv.msgs.length-1;i>=0;i--){if(conv.msgs[i].dir==="in"){det=parseCD(conv.msgs[i].text);if(det)break;}}}
   const curOrder=(conv?.orders||[])[0];
@@ -406,7 +415,7 @@ function App(){
           <div style={{display:"flex",gap:12,marginBottom:16}}>
             <Av name={conv.name} size={60}/>
             <div style={{flex:1}}>
-              <div style={{fontWeight:700,fontSize:15}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div>
+              <div style={{fontWeight:700,fontSize:15}}>{clientDisplayName(conv.cd,conv.name)}</div>
               <div style={{fontSize:13,color:T.textSec,marginBottom:8}}>@{conv.username}</div>
               {conv.cd&&<div style={{fontSize:12,color:T.textSec}}>📞 {conv.cd.phone||"—"}<br/>🏙 {conv.cd.city||"—"}</div>}
             </div>
@@ -543,7 +552,7 @@ const ProductsPage=()=>{
       {/* CLIENT */}
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Клієнт {conv.cd&&<span onClick={()=>setEditClient(conv.cd)} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>✎ Редагувати</span>}</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div><div style={{fontSize:15,fontWeight:700}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div></div>
+        <div style={{display:"flex",alignItems:"center",gap:12}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div><div style={{fontSize:15,fontWeight:700}}>{clientDisplayName(conv.cd,conv.name)}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div></div>
         {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13}}>
           {[["📞",conv.cd.phone||"—"],["🏙",conv.cd.city||"—",conv.cd.cityRef],["📦",conv.cd.branch||"—",conv.cd.warehouseRef]].map(([ic,v,ref],i)=>
             <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:i<2?`1px solid ${T.borderLight}`:"none"}}><span>{ic}</span><span style={{flex:1}}>{v}</span>{ref&&<span style={{fontSize:9,color:T.accent,fontWeight:600}}>NP ✓</span>}</div>)}
@@ -607,7 +616,7 @@ const ProductsPage=()=>{
       <div style={{padding:16,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:npSettings.connected?"#dc2626":"#94a3b8",textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>📦 Нова Пошта {npSettings.connected&&<Badge label="API" color="#10b981"/>} <span onClick={()=>{setPage("settings");setSettingsTab("widgets");}} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>⚙️</span></div>
         <div style={{background:npSettings.connected?T.dangerLight:T.surfaceAlt,borderRadius:12,padding:12,border:`1px solid ${npSettings.connected?"#fecaca":T.border}`}}>
-          {[["Відправник",(npSettings.senderName||"IS EASY")+(npSettings.senderCity?" | "+npSettings.senderCity:"")+(npSettings.senderBranch?" відд."+npSettings.senderBranch:"")],["Отримувач",conv?.cd?(conv.cd.surname||"")+" "+(conv.cd.name||""):"—"],["Тел",conv?.cd?.phone||"—"],["Місто",conv?.cd?.city||"—"],["Відд.",conv?.cd?.branch?"№"+conv.cd.branch:"—"],["Контроль",curOrder?(curOrder.paid>=curOrder.total?"Передплата":(curOrder.total-(curOrder.paid||0))+" грн наклад."):"—"]].map(([k,v],i)=>
+          {[["Відправник",(npSettings.senderName||"IS EASY")+(npSettings.senderCity?" | "+npSettings.senderCity:"")+(npSettings.senderBranch?" відд."+npSettings.senderBranch:"")],["Отримувач",conv?.cd?clientDisplayName(conv.cd,"—"):"—"],["Тел",conv?.cd?.phone||"—"],["Місто",conv?.cd?.city||"—"],["Відд.",conv?.cd?.branch?"№"+conv.cd.branch:"—"],["Контроль",curOrder?(curOrder.paid>=curOrder.total?"Передплата":(curOrder.total-(curOrder.paid||0))+" грн наклад."):"—"]].map(([k,v],i)=>
             <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}><span style={{color:"#991b1b",fontWeight:500}}>{k}:</span><span style={{fontWeight:500,textAlign:"right",maxWidth:"60%"}}>{v}</span></div>)}
           {curOrder?.ttn&&<div style={{marginTop:8,display:"flex",gap:6}}>
             <button onClick={async()=>{
@@ -668,7 +677,7 @@ const ProductsPage=()=>{
         {isMobile&&<span onClick={()=>setMobileView("list")} style={{fontSize:22,cursor:"pointer",padding:"2px 6px",color:T.textSec}}>←</span>}
         <Av name={conv.name} size={36} check={!!conv.cd} onClick={()=>{if(isMobile)setMobileView("client");else setClOpen(!clOpen);}}/>
         <div style={{flex:1,minWidth:0}} onClick={()=>{if(isMobile)setMobileView("client");}}>
-          <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default"}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div>
+          <div style={{fontWeight:700,fontSize:14,cursor:isMobile?"pointer":"default"}}>{clientDisplayName(conv.cd,conv.name)}</div>
         </div>
         {isMobile?<>
           <div onClick={()=>setFunnelOpen(!funnelOpen)} style={{padding:"7px 16px",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:"pointer",background:FNL.find(f=>f.id===conv.funnel)?.color||"#ccc",color:"#fff",minWidth:100,textAlign:"center",boxShadow:`0 2px 8px ${FNL.find(f=>f.id===conv.funnel)?.color||"#ccc"}40`}}>
@@ -686,19 +695,33 @@ const ProductsPage=()=>{
       </div>}
       <div style={{flex:1,overflowY:"auto",padding:"16px 16px",display:"flex",flexDirection:"column",gap:4,background:`linear-gradient(180deg, ${T.surfaceAlt} 0%, #f5f2ec 100%)`}}>
         {conv.msgs.map(msg=><div key={msg.id}>
-          <div style={{display:"flex",justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}><div style={{position:"relative"}}>
-            <div style={{maxWidth:isMobile?280:420,padding:"10px 14px",borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:msg.dir==="out"?T.bubbleOut:T.surface,color:msg.dir==="out"?"#fff":T.text,fontSize:14,lineHeight:1.45,wordBreak:"break-word",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow}}>{msg.text.split("\n").map((l,j)=><div key={j}>{l}</div>)}</div>
+          <div style={{display:"flex",justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}><div style={{position:"relative"}}
+            onContextMenu={msg.dir==="in"?(e)=>handleMsgContext(e,msg):undefined}
+            onTouchStart={msg.dir==="in"&&isMobile?(e)=>handleMsgTouchStart(e,msg):undefined}
+            onTouchEnd={msg.dir==="in"&&isMobile?handleMsgTouchEnd:undefined}
+            onTouchMove={msg.dir==="in"&&isMobile?handleMsgTouchEnd:undefined}>
+            <div style={{maxWidth:isMobile?280:420,padding:"10px 14px",borderRadius:msg.dir==="out"?"18px 18px 4px 18px":"18px 18px 18px 4px",background:msg.dir==="out"?T.bubbleOut:T.surface,color:msg.dir==="out"?"#fff":T.text,fontSize:14,lineHeight:1.45,wordBreak:"break-word",boxShadow:msg.dir==="out"?`0 2px 8px ${T.bubbleOut}30`:T.shadow,cursor:msg.dir==="in"?"context-menu":"default"}}>{msg.text.split("\n").map((l,j)=><div key={j}>{l}</div>)}</div>
             <div style={{fontSize:10,color:T.textMuted,marginTop:2,textAlign:msg.dir==="out"?"right":"left",display:"flex",alignItems:"center",gap:4,justifyContent:msg.dir==="out"?"flex-end":"flex-start"}}>
               {msg.time}
               {msg.parsed&&<span title="Дані витягнуто" style={{color:T.accent,fontSize:14}}>✅</span>}
+              {msg.dir==="in"&&parseCD(msg.text)&&<span title="Є дані клієнта" style={{color:T.warn,fontSize:10}}>📋</span>}
             </div>
           </div></div>
-          {msg.dir==="in"&&!conv.cd&&(()=>{const d=parseCD(msg.text);if(!d)return null;return <div style={{background:T.warnLight,border:"1px solid #fcd34d",borderRadius:14,padding:"12px 14px",margin:"6px 0",maxWidth:isMobile?300:420}}>
-            <div style={{fontWeight:700,fontSize:12,color:"#92400e",marginBottom:6}}>Розпізнано дані:</div>
-            {d.surname&&<div style={{fontSize:13}}><b style={{color:"#92400e"}}>{d.surname}</b> {d.name}</div>}
-            <div style={{fontSize:12,color:"#555"}}>{[d.city,d.branch&&"відд.№"+d.branch,d.phone].filter(Boolean).join(" · ")}</div>
-            <button onClick={()=>mkClient(d)} style={{marginTop:8,padding:"7px 16px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:12}}>Створити клієнта</button></div>})()}
-        </div>)}<div ref={ce}/></div>
+        </div>)}<div ref={ce}/>
+        {/* Context menu */}
+        {ctxMenu&&<div style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,background:T.surface,borderRadius:14,boxShadow:T.shadowLg,zIndex:500,border:`1px solid ${T.border}`,minWidth:200,overflow:"hidden",animation:"fadeIn .15s ease"}} onClick={e=>e.stopPropagation()}>
+          {ctxMenu.parsed&&<div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,fontSize:12,background:T.warnLight}}>
+            <div style={{fontWeight:700,color:"#92400e",marginBottom:4}}>📋 Розпізнано:</div>
+            {(ctxMenu.parsed.surname||ctxMenu.parsed.name)&&<div>{ctxMenu.parsed.surname} {ctxMenu.parsed.name}</div>}
+            <div style={{color:"#555",fontSize:11}}>{[ctxMenu.parsed.city,ctxMenu.parsed.branch&&"відд.№"+ctxMenu.parsed.branch,ctxMenu.parsed.phone].filter(Boolean).join(" · ")}</div>
+          </div>}
+          {ctxMenu.parsed&&!conv.cd&&<div onClick={()=>{mkClient(ctxMenu.parsed);setCtxMenu(null);}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,fontWeight:600,color:T.primary,borderBottom:`1px solid ${T.borderLight}`}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>✅ Створити клієнта</div>}
+          {ctxMenu.parsed&&conv.cd&&<div onClick={()=>{setEditClient({...conv.cd,...ctxMenu.parsed});setEcCities([]);setEcWarehouses([]);setCtxMenu(null);}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,fontWeight:600,color:T.primary,borderBottom:`1px solid ${T.borderLight}`}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>✎ Оновити дані клієнта</div>}
+          {!ctxMenu.parsed&&!conv.cd&&<div onClick={()=>{setEditClient({surname:"",name:"",city:"",branch:"",phone:"",cityRef:"",warehouseRef:""});setCtxMenu(null);}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,fontWeight:600,color:T.primary,borderBottom:`1px solid ${T.borderLight}`}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>+ Додати клієнта</div>}
+          <div onClick={()=>{navigator.clipboard?.writeText(ctxMenu.msg.text);setCtxMenu(null);noti("Скопійовано!");}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,borderBottom:`1px solid ${T.borderLight}`}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>📄 Копіювати текст</div>
+          <div onClick={()=>setCtxMenu(null)} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:T.textSec}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>✕ Закрити</div>
+        </div>}
+      </div>
       {/* INPUT */}
       <div style={{borderTop:`1px solid ${T.border}`,padding:"10px 14px",background:T.surface,flexShrink:0}}>
         {showQR&&<div className="card" style={{padding:6,marginBottom:8,maxHeight:140,overflowY:"auto",boxShadow:T.shadowMd}}>{QR.map(q=><div key={q.id} onClick={()=>{send(q.tx);setShowQR(false);}} style={{padding:"7px 12px",cursor:"pointer",borderRadius:8,fontSize:13,transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceHover} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{q.t}</div>)}</div>}
@@ -860,7 +883,7 @@ const ProductsPage=()=>{
             {npWarehouses.length>0&&<div>
               <input value={npWhSearch} onChange={e=>setNpWhSearch(e.target.value)} placeholder="Фільтр відділень..." style={{width:"100%",padding:"8px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:12,outline:"none",background:T.surfaceAlt,marginBottom:8}}/>
               <div style={{maxHeight:250,overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:12}}>
-                {npWarehouses.filter(w=>!npWhSearch||w.description.toLowerCase().includes(npWhSearch.toLowerCase())).slice(0,30).map((w,i)=>
+                {npWarehouses.filter(w=>{if(!npWhSearch)return true;const q=npWhSearch.toLowerCase().trim();const num=q.replace(/\D/g,"");if(num&&w.number===num)return true;if(num&&w.number&&w.number.startsWith(num))return true;return w.description.toLowerCase().includes(q)||w.shortAddress?.toLowerCase().includes(q);}).slice(0,50).map((w,i)=>
                   <div key={w.ref} style={{padding:"8px 12px",fontSize:12,borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div><div style={{fontWeight:600}}>{w.description}</div><div style={{color:T.textSec,fontSize:11}}>{w.shortAddress}</div></div>
                     <span style={{fontSize:10,color:T.textSec,whiteSpace:"nowrap",marginLeft:8}}>{w.maxWeight&&"до "+w.maxWeight+"кг"}</span>
@@ -902,7 +925,7 @@ const ProductsPage=()=>{
               {c.is_reply&&<span className="badge" style={{marginLeft:8,background:T.primaryLight,color:T.primary,fontSize:10}}>відповідь</span>}
               <div style={{fontSize:11,color:T.textSec}}>{c.created_at?new Date(c.created_at).toLocaleString("uk",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</div>
             </div>
-            {!c.is_reply&&c.instagram_user_id!==INSTAGRAM_BUSINESS_ID&&<button onClick={()=>{setCommentReply(c);setCommentReplyText("");}} style={{padding:"6px 14px",borderRadius:T.btnRadius,background:T.primaryLight,color:T.primary,border:"none",fontWeight:600,fontSize:12,cursor:"pointer"}}>Відповісти</button>}
+            {!c.is_reply&&<button onClick={()=>{setCommentReply(c);setCommentReplyText("");}} style={{padding:"6px 14px",borderRadius:T.btnRadius,background:T.primaryLight,color:T.primary,border:"none",fontWeight:600,fontSize:12,cursor:"pointer"}}>Відповісти</button>}
           </div>
           <p style={{fontSize:14,lineHeight:1.5,color:T.text}}>{c.text}</p>
           {commentReply&&commentReply.id===c.id&&<div style={{marginTop:12,display:"flex",gap:8}}>
@@ -940,7 +963,7 @@ const ProductsPage=()=>{
       {mobileView==="client"&&conv&&<div style={{width:"100%",display:"flex",flexDirection:"column",height:"100%"}} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         <div className="glass" style={{padding:"12px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
           <span onClick={()=>setMobileView("chat")} style={{fontSize:22,cursor:"pointer",color:T.textSec}}>←</span>
-          <span style={{fontWeight:700,fontSize:15,flex:1}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</span>
+          <span style={{fontWeight:700,fontSize:15,flex:1}}>{clientDisplayName(conv.cd,conv.name)}</span>
         </div>
         <RightPanel/>
       </div>}
@@ -1033,7 +1056,7 @@ const ProductsPage=()=>{
           <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Відділення {editClient.warehouseRef&&<span style={{color:T.accent,fontSize:10}}>✓ NP</span>}</label>
           <input value={editClient.branch||""} onChange={e=>{setEditClient(p=>({...p,branch:e.target.value,warehouseRef:""}));setEcWhQ(e.target.value);}} placeholder={editClient.cityRef?"Введіть номер або назву...":"Спочатку оберіть місто"} disabled={!editClient.cityRef&&!editClient.city} style={{width:"100%",padding:"10px 14px",border:`1px solid ${editClient.warehouseRef?T.accent:T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
           {editClient.cityRef&&ecWarehouses.length>0&&!editClient.warehouseRef&&<div style={{border:`1px solid ${T.border}`,borderRadius:10,marginTop:4,maxHeight:180,overflowY:"auto",background:T.surface}}>
-            {ecWarehouses.filter(w=>!editClient.branch||w.description.toLowerCase().includes(editClient.branch.toLowerCase())||w.shortAddress?.toLowerCase().includes(editClient.branch.toLowerCase())).slice(0,10).map((w,i)=><div key={w.ref} onClick={()=>{
+            {ecWarehouses.filter(w=>{if(!editClient.branch)return true;const q=editClient.branch.toLowerCase().trim();const num=q.replace(/\D/g,"");if(num&&w.number===num)return true;if(num&&w.number&&w.number.startsWith(num))return true;return w.description.toLowerCase().includes(q)||w.shortAddress?.toLowerCase().includes(q)||(w.number&&w.number.includes(num));}).slice(0,15).map((w,i)=><div key={w.ref} onClick={()=>{
               setEditClient(p=>({...p,branch:w.description,warehouseRef:w.ref}));
             }} style={{padding:"8px 12px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.borderLight}`}}><div style={{fontWeight:500}}>{w.description}</div><div style={{color:T.textSec,fontSize:11}}>{w.shortAddress||""}</div></div>)}
           </div>}
