@@ -37,7 +37,9 @@ button{transition:all .15s ease}button:hover{opacity:.92;transform:translateY(-1
 </head>
 <body>
 <div id="root"></div>
+<script>window.onerror=function(msg,src,line,col,err){var d=document.getElementById("root");if(d&&!d.children.length){d.innerHTML='<div style="padding:40px;text-align:center;font-family:Inter,sans-serif"><h2 style="color:#ef4444;margin-bottom:16px">JS Помилка</h2><pre style="background:#fef2f2;padding:16px;border-radius:12px;font-size:13px;text-align:left;overflow:auto;max-height:300px;white-space:pre-wrap">'+msg+'\nLine: '+line+', Col: '+col+'\n'+(err&&err.stack?err.stack:'')+'</pre></div>';}}</script>
 <script type="text/babel">
+class ErrorBoundary extends React.Component{constructor(p){super(p);this.state={hasError:false,error:null};}static getDerivedStateFromError(e){return{hasError:true,error:e};}componentDidCatch(e,info){console.error("React Error:",e,info);}render(){if(this.state.hasError)return React.createElement("div",{style:{padding:40,textAlign:"center",fontFamily:"Inter,sans-serif"}},React.createElement("h2",{style:{color:"#ef4444",marginBottom:16}},"Помилка рендерингу"),React.createElement("pre",{style:{background:"#fef2f2",padding:16,borderRadius:12,fontSize:13,textAlign:"left",overflow:"auto",maxHeight:300,whiteSpace:"pre-wrap"}},String(this.state.error)),React.createElement("button",{onClick:()=>this.setState({hasError:false,error:null}),style:{marginTop:16,padding:"10px 24px",background:"#4f46e5",color:"#fff",border:"none",borderRadius:12,cursor:"pointer",fontWeight:600}},"Спробувати знову"));return this.props.children;}}
 const{useState,useRef,useEffect,useCallback}=React;
 
 /* ═══ API ═══ */
@@ -183,8 +185,8 @@ function App(){
         }
         if(cmts&&cmts.length>0)setComments(cmts);
         // Load NP settings
-        const sett=await api("/api/settings");
-        if(sett&&sett.nova_poshta){const np=sett.nova_poshta;setNpSettings(prev=>({...prev,...np}));}
+        try{const sett=await api("/api/settings");
+        if(sett&&sett.nova_poshta&&typeof sett.nova_poshta==="object"){const np=sett.nova_poshta;setNpSettings(prev=>({...prev,...np}));}}catch(e){console.error("NP settings load error",e);}
       }catch(e){console.error("Failed to load data",e);}
       setLoading(false);
     })();
@@ -599,10 +601,11 @@ const ProductsPage=()=>{
             <button onClick={()=>matchPay(autoP.id,curOrder.id)} style={{padding:"5px 12px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer",fontSize:11}}>✓</button></div></div>}
       </div>
       {/* NOVA POSHTA */}
+      <ErrorBoundary>
       <div style={{padding:16,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:npSettings.connected?"#dc2626":"#94a3b8",textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>📦 Нова Пошта {npSettings.connected&&<Badge label="API" color="#10b981"/>} <span onClick={()=>{setPage("settings");setSettingsTab("widgets");}} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>⚙️</span></div>
         <div style={{background:npSettings.connected?T.dangerLight:T.surfaceAlt,borderRadius:12,padding:12,border:`1px solid ${npSettings.connected?"#fecaca":T.border}`}}>
-          {[["Відправник",npSettings.senderName+(npSettings.senderCity?" | "+npSettings.senderCity:"")+(npSettings.senderBranch?" відд."+npSettings.senderBranch:"")],["Отримувач",conv.cd?conv.cd.surname+" "+conv.cd.name:"—"],["Тел",conv.cd?.phone||"—"],["Місто",conv.cd?.city||"—"],["Відд.",conv.cd?.branch?"№"+conv.cd.branch:"—"],["Контроль",curOrder?(curOrder.paid>=curOrder.total?"Передплата":(curOrder.total-(curOrder.paid||0))+" грн наклад."):"—"]].map(([k,v],i)=>
+          {[["Відправник",(npSettings.senderName||"IS EASY")+(npSettings.senderCity?" | "+npSettings.senderCity:"")+(npSettings.senderBranch?" відд."+npSettings.senderBranch:"")],["Отримувач",conv?.cd?(conv.cd.surname||"")+" "+(conv.cd.name||""):"—"],["Тел",conv?.cd?.phone||"—"],["Місто",conv?.cd?.city||"—"],["Відд.",conv?.cd?.branch?"№"+conv.cd.branch:"—"],["Контроль",curOrder?(curOrder.paid>=curOrder.total?"Передплата":(curOrder.total-(curOrder.paid||0))+" грн наклад."):"—"]].map(([k,v],i)=>
             <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}><span style={{color:"#991b1b",fontWeight:500}}>{k}:</span><span style={{fontWeight:500,textAlign:"right",maxWidth:"60%"}}>{v}</span></div>)}
           {curOrder?.ttn&&<div style={{marginTop:8,display:"flex",gap:6}}>
             <button onClick={async()=>{
@@ -616,10 +619,11 @@ const ProductsPage=()=>{
             }} style={{flex:1,padding:"6px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:T.primaryLight,color:T.primary,border:"none"}}>🔄 Оновити статус</button>
             <a href={"https://novaposhta.ua/tracking/?cargo_number="+curOrder.ttn} target="_blank" rel="noopener" style={{padding:"6px 10px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",background:T.surfaceAlt,color:T.text,border:`1px solid ${T.border}`,textDecoration:"none"}}>↗ Трекінг</a>
           </div>}
-          {curOrder?.npStatus&&<div style={{marginTop:8,padding:"6px 10px",borderRadius:8,fontSize:12,fontWeight:600,textAlign:"center",background:NP_STATUSES[curOrder.npStatus]?.color+"18",color:NP_STATUSES[curOrder.npStatus]?.color}}>{NP_STATUSES[curOrder.npStatus]?.label} {curOrder.ttn&&"| ТТН: "+curOrder.ttn} {curOrder.daysAtPost>0&&" | "+curOrder.daysAtPost+" дн."}</div>}
+          {curOrder?.npStatus&&NP_STATUSES[curOrder.npStatus]&&<div style={{marginTop:8,padding:"6px 10px",borderRadius:8,fontSize:12,fontWeight:600,textAlign:"center",background:(NP_STATUSES[curOrder.npStatus]?.color||"#9ca3af")+"18",color:NP_STATUSES[curOrder.npStatus]?.color||"#9ca3af"}}>{NP_STATUSES[curOrder.npStatus]?.label||curOrder.npStatus} {curOrder.ttn&&"| ТТН: "+curOrder.ttn} {curOrder.daysAtPost>0&&" | "+curOrder.daysAtPost+" дн."}</div>}
           {!npSettings.connected&&<div style={{marginTop:8,padding:"6px 10px",borderRadius:8,fontSize:11,textAlign:"center",color:T.textSec}}>Підключіть API ключ в налаштуваннях для створення ТТН</div>}
         </div>
       </div>
+      </ErrorBoundary>
     </div>;};
 
   /* ═══ CHAT LIST ═══ */
@@ -1014,7 +1018,7 @@ const ProductsPage=()=>{
     </div>}
   </div>;
 }
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 </script>
 </body>
 </html>
