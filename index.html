@@ -151,6 +151,7 @@ function App(){
   const[npCitySearch,setNpCitySearch]=useState("");const[npCities,setNpCities]=useState([]);const[npWarehouses,setNpWarehouses]=useState([]);
   const[npWhSearch,setNpWhSearch]=useState("");const[npTrackInput,setNpTrackInput]=useState("");const[npTrackResult,setNpTrackResult]=useState(null);
   const[npCreateModal,setNpCreateModal]=useState(null);const[npEstimate,setNpEstimate]=useState(null);
+  const[ecCities,setEcCities]=useState([]);const[ecWarehouses,setEcWarehouses]=useState([]);const[ecCityQ,setEcCityQ]=useState("");const[ecWhQ,setEcWhQ]=useState("");
   const[recording,setRecording]=useState(false);
   const[categories,setCategories]=useState(["Весна-Осінь","Літо","Зима"]);const[newCat,setNewCat]=useState("");const[editCatIdx,setEditCatIdx]=useState(null);const[editCatVal,setEditCatVal]=useState("");
   const[showProdPicker,setShowProdPicker]=useState(false);const[prodPickerSearch,setProdPickerSearch]=useState("");const[prodPickerCat,setProdPickerCat]=useState("all");
@@ -543,11 +544,12 @@ const ProductsPage=()=>{
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
         <div style={{fontSize:10,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:10,display:"flex",justifyContent:"space-between"}}>Клієнт {conv.cd&&<span onClick={()=>setEditClient(conv.cd)} style={{color:T.primary,cursor:"pointer",fontSize:11,textTransform:"none",fontWeight:600}}>✎ Редагувати</span>}</div>
         <div style={{display:"flex",alignItems:"center",gap:12}} onClick={()=>setClOpen(!clOpen)}><Av name={conv.name} size={50} check={!!conv.cd}/><div><div style={{fontSize:15,fontWeight:700}}>{conv.cd?conv.cd.surname+" "+conv.cd.name:conv.name}</div><div style={{fontSize:12,color:T.primary,fontWeight:500}}>@{conv.username}</div></div></div>
-        {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13,display:"grid",gridTemplateColumns:"auto 1fr",gap:"6px 12px"}}>
-          {[["Тел",conv.cd.phone||"","phone"],["Місто",conv.cd.city||"","city"],["Відд.","№"+(conv.cd.branch||""),"branch"],["Інста","@"+conv.username]].map(([k,v,f],i)=>
-            <React.Fragment key={i}><span style={{color:T.textSec,fontWeight:500}}>{k}</span>{f?<input value={(v||"").replace("№","")} onChange={e=>updateClient(f,e.target.value)} style={{border:"none",borderBottom:`1px solid ${T.border}`,fontSize:13,outline:"none",padding:"2px 0",background:"transparent"}}/>:<span>{v}</span>}</React.Fragment>)}
+        {clOpen&&conv.cd&&<div style={{marginTop:12,padding:"12px 14px",background:T.surfaceAlt,borderRadius:12,fontSize:13}}>
+          {[["📞",conv.cd.phone||"—"],["🏙",conv.cd.city||"—",conv.cd.cityRef],["📦",conv.cd.branch||"—",conv.cd.warehouseRef]].map(([ic,v,ref],i)=>
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",borderBottom:i<2?`1px solid ${T.borderLight}`:"none"}}><span>{ic}</span><span style={{flex:1}}>{v}</span>{ref&&<span style={{fontSize:9,color:T.accent,fontWeight:600}}>NP ✓</span>}</div>)}
+          <button onClick={()=>{setEditClient({...conv.cd});setEcCities([]);setEcWarehouses([]);if(conv.cd.cityRef){api("/api/nova-poshta/warehouses?city_ref="+conv.cd.cityRef).then(r=>{if(r)setEcWarehouses(r);});}}} style={{width:"100%",marginTop:8,padding:"6px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",color:T.primary}}>✎ Редагувати</button>
         </div>}
-        {!conv.cd&&det&&<button onClick={()=>mkClient(det)} style={{width:"100%",marginTop:10,padding:"9px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:12}}>Створити клієнта</button>}
+        {!conv.cd&&<button onClick={()=>{if(det){mkClient(det);}else{setEditClient({surname:"",name:"",city:"",branch:"",phone:"",cityRef:"",warehouseRef:""});}}} style={{width:"100%",marginTop:10,padding:"9px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:12}}>{det?"Створити клієнта":"+ Додати клієнта"}</button>}
       </div>
       {/* ORDERS */}
       <div style={{padding:16,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
@@ -1006,13 +1008,43 @@ const ProductsPage=()=>{
 
     {/* EDIT CLIENT MODAL */}
     {editClient&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,padding:16}}>
-      <div style={{background:T.surface,borderRadius:20,padding:26,width:400,maxWidth:"100%",boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>
-        <h3 style={{marginBottom:14,fontSize:18}}>Редагувати клієнта</h3>
-        {[["Прізвище","surname"],["Ім'я","name"],["Місто","city"],["Відділення","branch"],["Телефон","phone"]].map(([l,k])=>
+      <div style={{background:T.surface,borderRadius:20,padding:26,width:420,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:T.shadowLg,animation:"fadeIn .2s ease"}}>
+        <h3 style={{marginBottom:14,fontSize:18}}>{conv?.cd?"Редагувати клієнта":"Новий клієнт"}</h3>
+        {[["Прізвище","surname"],["Ім'я","name"],["Телефон","phone"]].map(([l,k])=>
           <div key={k} style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{l}</label>
             <input value={editClient[k]||""} onChange={e=>setEditClient(p=>({...p,[k]:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/></div>)}
-        <div style={{display:"flex",gap:10,marginTop:10}}><button onClick={()=>setEditClient(null)} style={{padding:"10px 18px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
-          <button onClick={()=>{setConvs(p=>p.map(c=>c.id===selId?{...c,cd:editClient}:c));setEditClient(null);noti("Збережено!");}} style={{padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer"}}>Зберегти</button>
+        {/* NP City search */}
+        <div style={{marginBottom:10}}>
+          <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Місто {editClient.cityRef&&<span style={{color:T.accent,fontSize:10}}>✓ NP</span>}</label>
+          <div style={{display:"flex",gap:6}}>
+            <input value={editClient.city||""} onChange={e=>{setEditClient(p=>({...p,city:e.target.value,cityRef:"",warehouseRef:"",branch:""}));setEcCityQ(e.target.value);setEcWarehouses([]);
+              if(e.target.value.length>=2&&npSettings.connected){api("/api/nova-poshta/cities?q="+encodeURIComponent(e.target.value)).then(r=>{if(r)setEcCities(r);});}else{setEcCities([]);}
+            }} placeholder="Почніть вводити місто..." style={{flex:1,padding:"10px 14px",border:`1px solid ${editClient.cityRef?T.accent:T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+          </div>
+          {ecCities.length>0&&!editClient.cityRef&&<div style={{border:`1px solid ${T.border}`,borderRadius:10,marginTop:4,maxHeight:150,overflowY:"auto",background:T.surface}}>
+            {ecCities.slice(0,6).map((c,i)=><div key={i} onClick={async()=>{
+              setEditClient(p=>({...p,city:c.name||c.present,cityRef:c.ref,branch:"",warehouseRef:""}));setEcCities([]);
+              try{const whs=await api("/api/nova-poshta/warehouses?city_ref="+c.ref);if(whs)setEcWarehouses(whs);}catch(e){}
+            }} style={{padding:"8px 12px",fontSize:12,cursor:"pointer",borderBottom:i<Math.min(5,ecCities.length-1)?`1px solid ${T.borderLight}`:"none"}}>{c.present||c.name}</div>)}
+          </div>}
+        </div>
+        {/* NP Warehouse search */}
+        <div style={{marginBottom:10}}>
+          <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Відділення {editClient.warehouseRef&&<span style={{color:T.accent,fontSize:10}}>✓ NP</span>}</label>
+          <input value={editClient.branch||""} onChange={e=>{setEditClient(p=>({...p,branch:e.target.value,warehouseRef:""}));setEcWhQ(e.target.value);}} placeholder={editClient.cityRef?"Введіть номер або назву...":"Спочатку оберіть місто"} disabled={!editClient.cityRef&&!editClient.city} style={{width:"100%",padding:"10px 14px",border:`1px solid ${editClient.warehouseRef?T.accent:T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+          {editClient.cityRef&&ecWarehouses.length>0&&!editClient.warehouseRef&&<div style={{border:`1px solid ${T.border}`,borderRadius:10,marginTop:4,maxHeight:180,overflowY:"auto",background:T.surface}}>
+            {ecWarehouses.filter(w=>!editClient.branch||w.description.toLowerCase().includes(editClient.branch.toLowerCase())||w.shortAddress?.toLowerCase().includes(editClient.branch.toLowerCase())).slice(0,10).map((w,i)=><div key={w.ref} onClick={()=>{
+              setEditClient(p=>({...p,branch:w.description,warehouseRef:w.ref}));
+            }} style={{padding:"8px 12px",fontSize:12,cursor:"pointer",borderBottom:`1px solid ${T.borderLight}`}}><div style={{fontWeight:500}}>{w.description}</div><div style={{color:T.textSec,fontSize:11}}>{w.shortAddress||""}</div></div>)}
+          </div>}
+          {editClient.cityRef&&ecWarehouses.length===0&&<div style={{fontSize:11,color:T.textSec,marginTop:4,padding:"6px 10px",background:T.surfaceAlt,borderRadius:8,cursor:"pointer"}} onClick={async()=>{if(editClient.cityRef){try{const whs=await api("/api/nova-poshta/warehouses?city_ref="+editClient.cityRef);if(whs)setEcWarehouses(whs);}catch(e){}}}}>🔄 Завантажити відділення</div>}
+        </div>
+        {!npSettings.connected&&<div style={{fontSize:11,color:T.warn,padding:"8px 12px",background:T.warnLight,borderRadius:8,marginBottom:10}}>⚠️ Підключіть API Нова Пошта в налаштуваннях для пошуку міст та відділень</div>}
+        <div style={{display:"flex",gap:10,marginTop:10}}><button onClick={()=>{setEditClient(null);setEcCities([]);setEcWarehouses([]);}} style={{padding:"10px 18px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
+          <button onClick={()=>{
+            if(!conv?.cd){mkClient(editClient);}else{setConvs(p=>p.map(c=>c.id===selId?{...c,cd:editClient}:c));if(editClient.id)api("/api/clients/"+editClient.id,{method:"PATCH",body:JSON.stringify(editClient)});}
+            setEditClient(null);setEcCities([]);setEcWarehouses([]);noti("Збережено!");
+          }} style={{flex:1,padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer"}}>{conv?.cd?"Зберегти":"Створити"}</button>
         </div>
       </div>
     </div>}
