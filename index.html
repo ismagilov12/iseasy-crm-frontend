@@ -181,6 +181,9 @@ function App(){
   const[clientDialog,setClientDialog]=useState(null);/* {surname,name,city,branch,phone} */
   const[prodSaveSelect,setProdSaveSelect]=useState(null);/* Set of selected product ids for save */
   const[productsDirty,setProductsDirty]=useState(false);const[savingProducts,setSavingProducts]=useState(false);
+  /* Central payments state — single source of truth for Finance panel + PaymentPicker */
+  const[payments7d,setPayments7d]=useState([]);const[paysLoading,setPaysLoading]=useState(false);const[paysLastSync,setPaysLastSync]=useState(null);
+  const[financeOpen,setFinanceOpen]=useState(false);const[finSearch,setFinSearch]=useState("");const[finFilter,setFinFilter]=useState("all");
 
   const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const savedScrollRef=useRef(null);const userScrolledUpRef=useRef(false);const scrollToBottom=(force)=>{if(chatBoxRef.current){if(!force&&userScrolledUpRef.current)return;chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
   const isEmptyCD=(cd)=>!cd||typeof cd!=="object"||(Object.keys(cd).length===0)||(!cd.surname&&!cd.name&&!cd.phone&&!cd.city&&!cd.branch);
@@ -209,6 +212,23 @@ function App(){
   },[selId,conv?.msgs?.[conv?.msgs?.length-1]?.id]);
   useEffect(()=>{setTimeout(()=>sosEnd.current?.scrollIntoView({behavior:"smooth"}),60);},[sosM.length]);
   const noti=useCallback(m=>{setNotif(m);setTimeout(()=>setNotif(null),2500);},[]);
+
+  /* ═══ CENTRAL PAYMENTS LOADER ═══
+     Loads 7 days of payments (both Mono + WFP via backend) into one shared state.
+     PaymentPicker reads from this state instead of fetching per-conversation — no blinking.
+     Called on mount, every 5 min (today-only sync), and on manual refresh. */
+  const loadPayments7d=useCallback(async(doSync)=>{
+    setPaysLoading(true);
+    try{
+      if(doSync){
+        /* Sync backend with banks (Mono + WFP). days=1 for periodic, 7 for initial. */
+        try{await api("/api/monobank/sync",{method:"POST",body:JSON.stringify({days:doSync===true?7:doSync})});}catch(e){console.error("sync failed",e);}
+      }
+      const data=await api("/api/payments/suggest?days=7");
+      if(data&&Array.isArray(data)){setPayments7d(data);setPaysLastSync(Date.now());}
+    }catch(e){console.error("loadPayments7d",e);}
+    setPaysLoading(false);
+  },[]);
 
   /* ═══ LOAD DATA FROM API ═══ */
   const[loading,setLoading]=useState(true);
@@ -268,6 +288,8 @@ function App(){
         /* Load unmatched payments */
         const uPays=await api("/api/payments/unmatched");
         if(uPays&&Array.isArray(uPays))setUnmatchedPays(uPays);
+        /* Load 7 days of all payments into central state (no forced sync — just fetch) */
+        loadPayments7d(false);
         /* Load funnel stages */
         const fnls=await api("/api/funnels");
         if(fnls&&Array.isArray(fnls)&&fnls.length>0)setFunnelStages(fnls);
@@ -285,6 +307,12 @@ function App(){
     setMediaCache(p=>({...p,[mediaId]:"loading"}));
     api("/api/media/"+mediaId).then(data=>{if(data&&data.media_url)setMediaCache(p=>({...p,[mediaId]:data}));else setMediaCache(p=>({...p,[mediaId]:{id:mediaId,media_url:"",media_type:"",error:true}}));}).catch(()=>setMediaCache(p=>({...p,[mediaId]:{error:true}})));
   },[mediaCache]);
+
+  /* ── Auto-refresh central payments every 5 min (sync today only, refetch list) ── */
+  useEffect(()=>{
+    const iv=setInterval(()=>{loadPayments7d(1);/* days=1: quick today-only sync */},5*60*1000);
+    return()=>clearInterval(iv);
+  },[loadPayments7d]);
 
   /* ── Auto-refresh conversations every 10s ── */
   const inputFocusedRef=useRef(false);
@@ -555,6 +583,7 @@ function App(){
         <div key={id} onClick={()=>setPage(id)} style={{padding:"12px 18px",fontSize:14,cursor:"pointer",borderBottom:`1px solid ${T.borderLight}`,fontWeight:page===id?700:400,background:page===id?T.surfaceAlt:T.surface,color:page===id?T.primary:T.text,transition:"background .15s"}}>{lb}</div>)}
     </div>}
     <div style={{flex:1}}/>
+    <div onClick={()=>setFinanceOpen(!financeOpen)} title="Фінанси" style={{width:36,height:36,borderRadius:12,background:financeOpen?T.accent:T.surfaceAlt,border:`1px solid ${financeOpen?T.accent:T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,color:financeOpen?"#fff":T.text,position:"relative"}}>💰{payments7d.some(p=>!p.is_matched&&!p.matched_order_id&&!p.matched_conversation_id)&&<span style={{position:"absolute",top:-3,right:-3,width:10,height:10,borderRadius:"50%",background:T.warn,border:"2px solid #fff"}}/>}</div>
     <div onClick={()=>setSosOpen(!sosOpen)} style={{width:36,height:36,borderRadius:12,background:"linear-gradient(135deg,#7c3aed,#ec4899)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:10,fontWeight:800,color:"#fff",boxShadow:"0 2px 8px rgba(124,58,237,.3)"}}>{sosOpen?"✕":"SOS"}</div>
     <div onClick={()=>{setRepair(!repair);if(repair)setPinInput(null);}} style={{width:36,height:36,borderRadius:12,background:repair?"#eab308":T.surfaceAlt,border:`1px solid ${repair?"#eab308":T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>🔧</div>
     <div onClick={()=>{setPage("settings");setMenuOpen(false);}} style={{width:36,height:36,borderRadius:12,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>⚙️</div>
@@ -639,25 +668,33 @@ function App(){
   
   /* ═══ PRODUCT PICKER COMPONENT ═══ */
 
-  /* ═══ PAYMENT PICKER COMPONENT ═══ */
+  /* ═══ PAYMENT PICKER COMPONENT ═══
+     Reads from central payments7d state — no internal fetching, no blinking on conv switch.
+     Client-side fuzzy-match against conv surname to compute match_score. */
   const PaymentPicker=({conv,curOrder,onMatch,noti,onReload})=>{
-    const[pays,setPays]=useState([]);const[loading,setLoading]=useState(true);const[sel,setSel]=useState(null);const[search,setSearch]=useState("");const[syncing,setSyncing]=useState(false);
+    const[sel,setSel]=useState(null);const[search,setSearch]=useState("");const[syncing,setSyncing]=useState(false);
     const convIdRef=useRef(conv.id);convIdRef.current=conv.id;
-    const loadPays=async()=>{
-      setLoading(true);
-      const surname=(conv.cd?.surname||conv.name||"").trim();
-      const data=await api("/api/payments/suggest?client_name="+encodeURIComponent(surname)+"&conversation_id="+(conv.id||0)+"&days=3");
-      if(data&&Array.isArray(data))setPays(data);
-      setLoading(false);
+    /* Client-side fuzzy match — same logic as backend's _fuzzy_match (normalized substring + token overlap) */
+    const surname=(conv.cd?.surname||conv.name||"").trim().toLowerCase();
+    const scoreFn=(payer)=>{
+      if(!surname||!payer)return 0;
+      const p=(payer||"").toLowerCase();
+      if(p.includes(surname))return 1;
+      const sParts=surname.split(/\s+/).filter(x=>x.length>=3);
+      const pParts=p.split(/\s+/).filter(x=>x.length>=3);
+      if(!sParts.length||!pParts.length)return 0;
+      let hits=0;sParts.forEach(sp=>{if(pParts.some(pp=>pp.includes(sp)||sp.includes(pp)))hits++;});
+      return hits/sParts.length;
     };
-    useEffect(()=>{loadPays();},[conv.id]);
+    const pays=(payments7d||[]).map(p=>({...p,match_score:p.match_score&&p.match_score>0?p.match_score:scoreFn(p.payer_name||"")}));
+    const loading=paysLoading&&payments7d.length===0;
     const doSync=async()=>{
       setSyncing(true);
       try{
-        const r=await api("/api/monobank/sync",{method:"POST",body:JSON.stringify({days:3})});
+        const r=await api("/api/monobank/sync",{method:"POST",body:JSON.stringify({days:7})});
         if(r&&r.status==="ok"){
           noti("Синхронізовано: "+r.synced+" нових оплат"+(r.errors&&r.errors.length>0?" (помилки: "+r.errors.length+")":""));
-          await loadPays();
+          await loadPayments7d(false);
         }else{noti("Помилка синхронізації: "+(r?.error||r?.detail||"невідома"));}
       }catch(e){noti("Помилка синхронізації");}
       setSyncing(false);
@@ -669,8 +706,8 @@ function App(){
         if(r.fully_paid)noti("Оплату підтверджено повністю!");
         else if(r.order_id)noti("Оплату додано до замовлення!");
         else noti("Оплату прив'язано до клієнта!");
-        // Remove matched payment from local list immediately
-        setPays(prev=>prev.filter(x=>x.id!==payId));
+        /* Optimistically mark as matched in central state */
+        setPayments7d(prev=>prev.map(x=>x.id===payId?{...x,is_matched:true,matched_conversation_id:convIdRef.current,matched_order_id:ordId||null}:x));
         setSel(null);
         if(onReload)onReload(r);
       }else noti("Помилка");
@@ -706,7 +743,7 @@ function App(){
       </div>
       <div style={{maxHeight:300,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
         {loading?<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Завантаження оплат...</div>:<>
-          {available.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає вільних оплат за останні 3 дні<br/><span style={{fontSize:11,color:T.primary,cursor:"pointer"}} onClick={doSync}>Натисніть 🔄 Sync щоб завантажити з Monobank</span></div>}
+          {available.length===0&&<div style={{textAlign:"center",padding:16,color:T.textSec,fontSize:12}}>Немає вільних оплат за останні 7 днів<br/><span style={{fontSize:11,color:T.primary,cursor:"pointer"}} onClick={doSync}>Натисніть 🔄 Sync щоб завантажити з Monobank + WFP</span></div>}
           {!search&&suggested.length>0&&<div style={{marginBottom:6}}>
             <div style={{fontSize:10,fontWeight:700,color:T.accent,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>✨ Рекомендовані збіги:</div>
             {suggested.map(p=><PayRow key={p.id} p={p} accent/>)}
@@ -977,12 +1014,87 @@ const ProductsPage=()=>{
       </div>
     </div>;};
 
+  /* ═══ FINANCE PANEL ═══
+     Left panel showing all payments (Mono + WFP) for last 7 days.
+     Reads from central payments7d state. Single source of truth for finances. */
+  const FinancePanel=({full})=>{
+    if(!financeOpen)return null;
+    const now=new Date();const todayStr=now.toDateString();
+    let todayTotal=0,todayCount=0,weekTotal=0,unmatched=0;
+    payments7d.forEach(p=>{
+      const amt=+p.amount||0;weekTotal+=amt;
+      if(p.payment_date){const d=new Date(p.payment_date);if(d.toDateString()===todayStr){todayTotal+=amt;todayCount++;}}
+      if(!p.is_matched&&!p.matched_order_id&&!p.matched_conversation_id)unmatched++;
+    });
+    const filtered=payments7d.filter(p=>{
+      if(finFilter==="mono"&&p.source!=="monobank")return false;
+      if(finFilter==="wfp"&&p.source!=="wayforpay")return false;
+      if(finFilter==="unmatched"&&(p.is_matched||p.matched_order_id||p.matched_conversation_id))return false;
+      if(finSearch){const s=finSearch.toLowerCase();if(!(p.payer_name||"").toLowerCase().includes(s)&&!String(p.amount).includes(s))return false;}
+      return true;
+    });
+    const fmtDate=d=>{if(!d)return"";try{const dt=new Date(d);const isToday=dt.toDateString()===todayStr;return(isToday?"Сьогодні ":dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit"})+" ")+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}catch(e){return""}};
+    const srcBadge=s=>s==="monobank"?{bg:"#e0f2fe",color:"#0369a1",label:"🏦 Mono"}:{bg:"#fef3c7",color:"#92400e",label:"💳 WFP"};
+    const w=full?"100%":300;
+    return <div style={{display:"flex",flexDirection:"column",background:T.surface,height:"100%",width:w,flexShrink:0,borderRight:full?"none":`1px solid ${T.border}`}}>
+      <div style={{padding:"12px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+        <span style={{fontSize:18}}>💰</span>
+        <b style={{fontSize:15,flex:1}}>Фінанси</b>
+        <button onClick={()=>loadPayments7d(7)} disabled={paysLoading} title="Повне оновлення (7 днів)" style={{padding:"6px 10px",background:paysLoading?"#e5e7eb":"#e0f2fe",color:paysLoading?"#9ca3af":"#0369a1",border:"1px solid "+(paysLoading?"#d1d5db":"#bae6fd"),borderRadius:8,fontSize:12,fontWeight:700,cursor:paysLoading?"wait":"pointer"}}>{paysLoading?"⏳":"🔄"}</button>
+        <span onClick={()=>setFinanceOpen(false)} style={{cursor:"pointer",fontSize:18,color:T.textSec,padding:"0 4px"}}>✕</span>
+      </div>
+      {/* Stats */}
+      <div style={{padding:"12px 14px",borderBottom:`1px solid ${T.border}`,background:T.surfaceAlt,flexShrink:0}}>
+        <div style={{fontSize:10,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,fontWeight:700,marginBottom:4}}>Сьогодні</div>
+        <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+          <span style={{fontSize:22,fontWeight:800,color:T.accent}}>{todayTotal.toLocaleString("uk")}₴</span>
+          <span style={{fontSize:11,color:T.textSec}}>{todayCount} оплат</span>
+        </div>
+        <div style={{display:"flex",gap:8,fontSize:11,color:T.textSec}}>
+          <span>За 7 днів: <b style={{color:T.text}}>{weekTotal.toLocaleString("uk")}₴</b></span>
+          <span>•</span>
+          <span>Вільних: <b style={{color:unmatched>0?T.warn:T.text}}>{unmatched}</b></span>
+        </div>
+        {paysLastSync&&<div style={{fontSize:10,color:T.textSec,marginTop:6}}>Оновлено: {new Date(paysLastSync).toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}</div>}
+      </div>
+      {/* Filters */}
+      <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border}`,display:"flex",gap:4,flexShrink:0}}>
+        {[{id:"all",label:"Всі"},{id:"mono",label:"🏦"},{id:"wfp",label:"💳"},{id:"unmatched",label:"❓"}].map(f=><button key={f.id} onClick={()=>setFinFilter(f.id)} style={{flex:1,padding:"6px 4px",fontSize:11,fontWeight:700,border:"none",borderRadius:6,cursor:"pointer",background:finFilter===f.id?T.primary:T.surfaceAlt,color:finFilter===f.id?"#fff":T.textSec,transition:"all .15s"}}>{f.label}</button>)}
+      </div>
+      {/* Search */}
+      <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+        <input value={finSearch} onChange={e=>setFinSearch(e.target.value)} placeholder="Пошук по імені або сумі..." style={{width:"100%",padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,outline:"none",background:T.surfaceAlt,boxSizing:"border-box"}}/>
+      </div>
+      {/* List */}
+      <div style={{flex:1,overflowY:"auto",padding:"8px 10px",WebkitOverflowScrolling:"touch"}}>
+        {paysLoading&&payments7d.length===0&&<div style={{textAlign:"center",padding:24,color:T.textSec,fontSize:12}}>Завантаження...</div>}
+        {!paysLoading&&filtered.length===0&&<div style={{textAlign:"center",padding:24,color:T.textSec,fontSize:12}}>Немає оплат за фільтром</div>}
+        {filtered.map(p=>{
+          const b=srcBadge(p.source);
+          const mtched=p.is_matched||p.matched_order_id||p.matched_conversation_id;
+          return <div key={p.id} style={{padding:"9px 11px",background:mtched?T.surfaceAlt:T.surface,borderRadius:10,marginBottom:5,border:`1px solid ${mtched?T.border:"#bae6fd"}`,opacity:mtched?.7:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+              <span style={{fontSize:9,padding:"1px 5px",background:b.bg,color:b.color,borderRadius:5,fontWeight:700,flexShrink:0}}>{b.label}</span>
+              <span style={{fontSize:12,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{p.payer_name||"—"}</span>
+              <span style={{fontWeight:700,fontSize:13,color:T.accent,flexShrink:0}}>{p.amount}₴</span>
+            </div>
+            <div style={{fontSize:10,color:T.textSec,display:"flex",justifyContent:"space-between",gap:6}}>
+              <span>{fmtDate(p.payment_date)}</span>
+              {mtched&&<span style={{color:T.accent,fontWeight:600}}>✓ Прив'язано</span>}
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>;
+  };
+
   /* ═══ CHAT LIST ═══ */
   const ChatList=({full})=><div style={{display:"flex",flexDirection:"column",background:T.surface,height:"100%",width:full?"100%":320,flexShrink:0,borderRight:full?"none":`1px solid ${T.border}`}} onTouchStart={isMobile?handleTouchStart:undefined} onTouchEnd={isMobile?handleTouchEnd:undefined}>
     {/* Mobile mini-header with hamburger */}
     {isMobile&&full&&<div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0,background:T.surface}}>
       <div onClick={()=>setSidebarOpen(true)} style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,flexShrink:0}}>☰</div>
       <div style={{fontSize:16,fontWeight:800,flex:1}}>IS EASY <span style={{fontSize:9,background:T.primary,color:"#fff",padding:"2px 7px",borderRadius:5,fontWeight:700}}>CRM</span></div>
+      <div onClick={()=>setFinanceOpen(true)} title="Фінанси" style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,position:"relative"}}>💰{payments7d.some(p=>!p.is_matched&&!p.matched_order_id&&!p.matched_conversation_id)&&<span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:T.warn,border:"1px solid #fff"}}/>}</div>
       <div onClick={refreshAll} style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14}}>🔄</div>
     </div>}
     <div style={{display:"flex",gap:0,borderBottom:`1px solid ${T.border}`,background:T.surfaceAlt}}>
@@ -1458,7 +1570,7 @@ const ProductsPage=()=>{
     </div>}
 
     {/* MAIN */}
-    {isMobile?<div style={{flex:1,overflow:"hidden",display:"flex"}}>
+    {isMobile?<div style={{flex:1,overflow:"hidden",display:"flex",position:"relative"}}>
       {mobileView==="list"&&<div style={{width:"100%",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}>{ChatList({full:true})}</div>}
       {mobileView==="chat"&&<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}>{ChatArea({full:true})}</div>}
       {mobileView==="client"&&conv&&<div style={{width:"100%",display:"flex",flexDirection:"column",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -1468,7 +1580,10 @@ const ProductsPage=()=>{
         </div>
         {RightPanel()}
       </div>}
+      {/* Finance panel as full-screen overlay on mobile */}
+      {financeOpen&&<div style={{position:"absolute",inset:0,background:T.surface,zIndex:50,animation:"slideInLeft .25s ease"}}>{FinancePanel({full:true})}</div>}
     </div>:<div style={{flex:1,display:"flex",overflow:"hidden"}}>
+      {FinancePanel({full:false})}
       {ChatList({})}
       {ChatArea({})}
       {conv&&<div style={{width:340,borderLeft:`1px solid ${T.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>{RightPanel()}</div>}
