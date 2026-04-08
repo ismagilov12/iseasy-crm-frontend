@@ -18,6 +18,7 @@ input,textarea,select{font-family:'Inter',sans-serif;-webkit-user-select:text;us
 @keyframes repairGlow{0%,100%{box-shadow:0 0 8px rgba(234,179,8,.3)}50%{box-shadow:0 0 20px rgba(234,179,8,.6)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes savePulse{0%,100%{box-shadow:0 2px 8px rgba(22,163,74,.35),0 0 0 0 rgba(22,163,74,.5)}50%{box-shadow:0 2px 12px rgba(22,163,74,.6),0 0 0 6px rgba(22,163,74,0)}}
 .repair-mode{filter:grayscale(1)!important;transition:filter .3s}
 .repair-pin{position:absolute;width:24px;height:24px;background:#eab308;border:2px solid #854d0e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#854d0e;cursor:pointer;z-index:50;transform:translate(-50%,-50%);animation:repairGlow 2s infinite}
 table{width:100%;border-collapse:separate;border-spacing:0}th,td{text-align:left;padding:10px 14px;border-bottom:1px solid #eae7e0;font-size:13px}th{font-weight:600;color:#8a8578;font-size:11px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:#faf8f5;z-index:2}
@@ -148,6 +149,7 @@ function App(){
   const[orderTypeModal,setOrderTypeModal]=useState(null);
   const[repairNote,setRepairNote]=useState("");const[returnTtn,setReturnTtn]=useState("");
   const[prodSearch,setProdSearch]=useState("");const[prodCat,setProdCat]=useState("all");const[editingProd,setEditingProd]=useState(null);
+  const[productsDirty,setProductsDirty]=useState(false);const[savingProducts,setSavingProducts]=useState(false);
   const[ordFilter,setOrdFilter]=useState("all");
   const[npSettings,setNpSettings]=useState({apiKey:"",senderRef:"",senderAddressRef:"",senderContactRef:"",senderCityRef:"",senderBranch:"",senderCity:"",senderPhone:"",senderName:"IS EASY",controlPay:true,cashOnDelivery:true,connected:false});
   const[npTestLoading,setNpTestLoading]=useState(false);const[npSenderInfo,setNpSenderInfo]=useState(null);
@@ -257,35 +259,45 @@ function App(){
     r.onresult=(e)=>{const t=e.results[0][0].transcript;setInput(prev=>prev+(prev?" ":"")+t);setRecording(false);};
     r.onerror=()=>{setRecording(false);noti("Помилка розпізнавання");};r.onend=()=>setRecording(false);
     r.start();setRecording(true);};
-  const saveProductsToDB=()=>{
-    api("/api/products",{method:"POST",body:JSON.stringify(products)}).then(()=>noti("Товари збережено")).catch(e=>console.error("Save error",e));
+  const saveProductsToDB=async(list)=>{
+    const payload=Array.isArray(list)?list:products;
+    setSavingProducts(true);
+    try{
+      await api("/api/products",{method:"POST",body:JSON.stringify(payload)});
+      setProductsDirty(false);
+      noti("✅ Товари збережено: "+payload.length);
+    }catch(e){
+      console.error("Save error",e);
+      noti("❌ Помилка збереження");
+    }finally{
+      setSavingProducts(false);
+    }
   };
-  
+
   const handleAddProduct=()=>{
     const newProd={id:Date.now(),name:"Новий товар",sku:"ULT-NEW-"+String(products.length+1).padStart(3,"0"),price:0,cost:0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:"Весна-Осінь",img:""};
     setProducts(p=>[...p,newProd]);
-    saveProductsToDB();
-    noti("Товар додано");
+    setProductsDirty(true);
+    noti("Товар додано. Натисніть 💾 Зберегти");
   };
-  
+
   const handleDeleteProduct=(pid)=>{
     setProducts(pr=>pr.filter(x=>x.id!==pid));
-    saveProductsToDB();
-    noti("Товар видалено");
+    setProductsDirty(true);
   };
-  
+
   const handleUpdateProduct=(pid,field,value)=>{
     setProducts(pr=>pr.map(x=>x.id===pid?{...x,[field]:value}:x));
-    saveProductsToDB();
+    setProductsDirty(true);
   };
-  
-  const handleImportCSV=()=>{const inp=document.createElement("input");inp.type="file";inp.onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{const text=ev.target.result;const lines=text.split("\n").filter(l=>l.trim());const imported=[];lines.slice(1).forEach((line,idx)=>{const[name,sku,price,cost,category,img]=(line.match(/(?:"(?:[^"]*(?:""[^"]*)*)"|[^,]*)/g)||[]).map(f=>f.replace(/^"|"$/g,"").replace(/""/g,'"').trim());if(name&&sku){imported.push({id:Date.now()+idx,name,sku,price:parseInt(price)||0,cost:parseInt(cost)||0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:category||"Весна-Осінь",img:img||""});}});if(imported.length){setProducts(prev=>[...prev,...imported]);saveProductsToDB();noti("Імпортовано: "+imported.length+" товарів");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
-  
+
+  const handleImportCSV=()=>{const inp=document.createElement("input");inp.type="file";inp.onchange=(e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=(ev)=>{const text=ev.target.result;const lines=text.split("\n").filter(l=>l.trim());const imported=[];lines.slice(1).forEach((line,idx)=>{const[name,sku,price,cost,category,img]=(line.match(/(?:"(?:[^"]*(?:""[^"]*)*)"|[^,]*)/g)||[]).map(f=>f.replace(/^"|"$/g,"").replace(/""/g,'"').trim());if(name&&sku){imported.push({id:Date.now()+idx,name,sku,price:parseInt(price)||0,cost:parseInt(cost)||0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:category||"Весна-Осінь",img:img||""});}});if(imported.length){setProducts(prev=>[...prev,...imported]);setProductsDirty(true);noti("Імпортовано: "+imported.length+". Натисніть 💾 Зберегти");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
+
   const handleDuplicateProduct=(p)=>{
     const dup={...p,id:Date.now(),name:p.name+" (копія)",sku:p.sku+"-COPY"};
     setProducts(prev=>[...prev,dup]);
-    saveProductsToDB();
-    noti("Товар дубльовано");
+    setProductsDirty(true);
+    noti("Товар дубльовано. Натисніть 💾 Зберегти");
   };
 
   const handleRepairClick=(e)=>{if(!repair)return;e.preventDefault();const rect=e.currentTarget.getBoundingClientRect();setPinInput({x:e.clientX-rect.left,y:e.clientY-rect.top,absX:e.clientX,absY:e.clientY});setPinText("");};
@@ -480,7 +492,7 @@ const ProductsPage=()=>{
       const imported=[];let idx=Date.now();
       Object.entries(parentMap).forEach(([uid,p])=>{const kids=childMap[uid]||[];const firstSku=kids[0]?.sku||p.sku||"";const price=kids[0]?.price||0;const sizes=[...new Set(kids.map(c=>parseInt(c.size)).filter(n=>!isNaN(n)))].sort((a,b)=>a-b);const hasSmall=sizes.some(s=>s<39);const hasBig=sizes.some(s=>s>41);const gender=hasSmall&&hasBig?"u":hasSmall?"f":"m";const cat=p.category.replace(/ULTERA;/g,"").trim()||"Інше";
         imported.push({id:idx++,name:p.title,sku:firstSku,price:Math.round(price),cost:0,stock:0,sizes:sizes.length?sizes:(gender==="m"?[40,41,42,43,44,45]:gender==="f"?[36,37,38,39,40,41]:[36,37,38,39,40,41,42,43,44,45]),gender,category:cat,img:p.photo||""});});
-      if(imported.length){setProducts(imported);noti("Імпортовано: "+imported.length+" товарів");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
+      if(imported.length){setProducts(imported);setProductsDirty(true);noti("Імпортовано: "+imported.length+". Натисніть 💾 Зберегти");}else{noti("Не знайдено товарів у CSV");}};r.readAsText(f,"UTF-8");};inp.click();};
     const handleExportCSV=()=>{const hdr="Назва;Артикул;Ціна;Собівартість;Категорія;Розміри;Стать;Фото\n";const rows=products.map(p=>[p.name,p.sku,p.price,p.cost,p.category,(Array.isArray(p.sizes)?p.sizes:p.sizes?String(p.sizes).split(","):[]).join(","),p.gender==="m"?"Ч":p.gender==="f"?"Ж":"Ж+Ч",p.img].join(";")).join("\n");const blob=new Blob(["\uFEFF"+hdr+rows],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="is-easy-products.csv";a.click();noti("CSV експортовано");};
     const dupProd=(p)=>handleDuplicateProduct(p);
 
@@ -509,10 +521,11 @@ const ProductsPage=()=>{
               </div>
             </div>))}
           </div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={handleImportCSV} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 CSV</button>
+          <div style={{display:"flex",gap:10,marginBottom:10}}>
+            <button onClick={handleCSV} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 CSV</button>
             <button onClick={handleAddProduct} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
           </div>
+          <button onClick={()=>saveProductsToDB()} disabled={savingProducts||!productsDirty} style={{width:"100%",padding:"12px",background:productsDirty?"#16a34a":T.surfaceAlt,color:productsDirty?"#fff":T.textSec,border:productsDirty?"none":`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:14,fontWeight:700,cursor:productsDirty&&!savingProducts?"pointer":"not-allowed",boxShadow:productsDirty?"0 2px 8px rgba(22,163,74,.35)":"none",animation:productsDirty?"savePulse 1.8s infinite":"none"}}>{savingProducts?"⏳ Збереження...":productsDirty?"💾 Зберегти в базу":"✓ Збережено"}</button>
         </div>
       ):(
         <div>
@@ -524,6 +537,7 @@ const ProductsPage=()=>{
         <button onClick={handleCSV} style={{padding:"9px 16px",background:T.text,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 Імпорт CSV</button>
         <button onClick={handleExportCSV} style={{padding:"9px 16px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📤 Експорт CSV</button>
         <button onClick={handleAddProduct} style={{padding:"9px 16px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Додати</button>
+        <button onClick={()=>saveProductsToDB()} disabled={savingProducts||!productsDirty} style={{padding:"9px 18px",marginLeft:"auto",background:productsDirty?"#16a34a":T.surfaceAlt,color:productsDirty?"#fff":T.textSec,border:productsDirty?"none":`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:productsDirty&&!savingProducts?"pointer":"not-allowed",boxShadow:productsDirty?"0 2px 8px rgba(22,163,74,.35)":"none",animation:productsDirty?"savePulse 1.8s infinite":"none"}}>{savingProducts?"⏳ Збереження...":productsDirty?"💾 Зберегти в базу":"✓ Збережено"}</button>
       </div>
       <div className="card">
         <div style={{overflowX:"auto"}}><table>
