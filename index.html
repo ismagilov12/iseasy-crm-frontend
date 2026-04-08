@@ -183,7 +183,7 @@ function App(){
   const[productsDirty,setProductsDirty]=useState(false);const[savingProducts,setSavingProducts]=useState(false);
   /* Central payments state — single source of truth for Finance panel + PaymentPicker */
   const[payments7d,setPayments7d]=useState([]);const[paysLoading,setPaysLoading]=useState(false);const[paysLastSync,setPaysLastSync]=useState(null);
-  const[financeOpen,setFinanceOpen]=useState(false);const[finSearch,setFinSearch]=useState("");const[finFilter,setFinFilter]=useState("all");
+  const[finSearch,setFinSearch]=useState("");const[finFilter,setFinFilter]=useState("all");
 
   const sosEnd=useRef(null);const ce=useRef(null);const chatBoxRef=useRef(null);const msgInputRef=useRef(null);const conv=selId?convs.find(c=>c.id===selId):null;const touchStart=useRef(null);const prevSelId=useRef(null);const prevMsgLen=useRef(0);const savedScrollRef=useRef(null);const userScrolledUpRef=useRef(false);const scrollToBottom=(force)=>{if(chatBoxRef.current){if(!force&&userScrolledUpRef.current)return;chatBoxRef.current.scrollTop=chatBoxRef.current.scrollHeight;}};
   const isEmptyCD=(cd)=>!cd||typeof cd!=="object"||(Object.keys(cd).length===0)||(!cd.surname&&!cd.name&&!cd.phone&&!cd.city&&!cd.branch);
@@ -579,11 +579,10 @@ function App(){
       <span style={{fontSize:10,color:T.textSec,transition:"transform .2s",transform:menuOpen?"rotate(180deg)":"rotate(0)"}}>▼</span>
     </div>
     {menuOpen&&<div style={{position:"absolute",top:52,left:14,background:T.surface,borderRadius:T.cardRadius,boxShadow:T.shadowLg,zIndex:350,minWidth:200,overflow:"hidden",border:`1px solid ${T.border}`,animation:"slideDown .2s ease"}} onClick={()=>setMenuOpen(false)}>
-      {[["crm","💬 Чати"],["orders","📦 Замовлення"],["products","🏷️ Товар"],["analytics","📊 Аналітика"],["settings","⚙️ Налаштування"]].map(([id,lb])=>
+      {[["crm","💬 Чати"],["orders","📦 Замовлення"],["products","🏷️ Товар"],["finance","💰 Фінанси"],["analytics","📊 Аналітика"],["settings","⚙️ Налаштування"]].map(([id,lb])=>
         <div key={id} onClick={()=>setPage(id)} style={{padding:"12px 18px",fontSize:14,cursor:"pointer",borderBottom:`1px solid ${T.borderLight}`,fontWeight:page===id?700:400,background:page===id?T.surfaceAlt:T.surface,color:page===id?T.primary:T.text,transition:"background .15s"}}>{lb}</div>)}
     </div>}
     <div style={{flex:1}}/>
-    <div onClick={()=>setFinanceOpen(!financeOpen)} title="Фінанси" style={{width:36,height:36,borderRadius:12,background:financeOpen?T.accent:T.surfaceAlt,border:`1px solid ${financeOpen?T.accent:T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16,color:financeOpen?"#fff":T.text,position:"relative"}}>💰{payments7d.some(p=>!p.is_matched&&!p.matched_order_id&&!p.matched_conversation_id)&&<span style={{position:"absolute",top:-3,right:-3,width:10,height:10,borderRadius:"50%",background:T.warn,border:"2px solid #fff"}}/>}</div>
     <div onClick={()=>setSosOpen(!sosOpen)} style={{width:36,height:36,borderRadius:12,background:"linear-gradient(135deg,#7c3aed,#ec4899)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:10,fontWeight:800,color:"#fff",boxShadow:"0 2px 8px rgba(124,58,237,.3)"}}>{sosOpen?"✕":"SOS"}</div>
     <div onClick={()=>{setRepair(!repair);if(repair)setPinInput(null);}} style={{width:36,height:36,borderRadius:12,background:repair?"#eab308":T.surfaceAlt,border:`1px solid ${repair?"#eab308":T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>🔧</div>
     <div onClick={()=>{setPage("settings");setMenuOpen(false);}} style={{width:36,height:36,borderRadius:12,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>⚙️</div>
@@ -591,7 +590,7 @@ function App(){
 
   /* ═══ MOBILE SIDEBAR ═══ */
   const MobileSidebar=()=>{if(!isMobile||!sidebarOpen)return null;
-    const items=[["crm","💬","Чати"],["orders","📦","Замовлення"],["products","🏷️","Товари"],["analytics","📊","Аналітика"],["settings","⚙️","Налаштування"],["repair","🔧","Ремонт"]];
+    const items=[["crm","💬","Чати"],["orders","📦","Замовлення"],["products","🏷️","Товари"],["finance","💰","Фінанси"],["analytics","📊","Аналітика"],["settings","⚙️","Налаштування"],["repair","🔧","Ремонт"]];
     return <>
       <div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.3)",zIndex:400,animation:"fadeIn .15s ease"}}/>
       <div style={{position:"fixed",top:0,left:0,bottom:0,width:260,background:T.surface,zIndex:401,display:"flex",flexDirection:"column",boxShadow:T.shadowLg,animation:"sidebarIn .25s ease"}}>
@@ -1015,10 +1014,9 @@ const ProductsPage=()=>{
     </div>;};
 
   /* ═══ FINANCE PANEL ═══
-     Left panel showing all payments (Mono + WFP) for last 7 days.
-     Reads from central payments7d state. Single source of truth for finances. */
+     Full-page view of all payments (Mono + WFP) for last 7 days.
+     Reads from central payments7d state. Accessible from left menu. */
   const FinancePanel=({full})=>{
-    if(!financeOpen)return null;
     const now=new Date();const todayStr=now.toDateString();
     let todayTotal=0,todayCount=0,weekTotal=0,unmatched=0;
     payments7d.forEach(p=>{
@@ -1035,13 +1033,11 @@ const ProductsPage=()=>{
     });
     const fmtDate=d=>{if(!d)return"";try{const dt=new Date(d);const isToday=dt.toDateString()===todayStr;return(isToday?"Сьогодні ":dt.toLocaleDateString("uk",{day:"2-digit",month:"2-digit"})+" ")+dt.toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"})}catch(e){return""}};
     const srcBadge=s=>s==="monobank"?{bg:"#e0f2fe",color:"#0369a1",label:"🏦 Mono"}:{bg:"#fef3c7",color:"#92400e",label:"💳 WFP"};
-    const w=full?"100%":300;
-    return <div style={{display:"flex",flexDirection:"column",background:T.surface,height:"100%",width:w,flexShrink:0,borderRight:full?"none":`1px solid ${T.border}`}}>
-      <div style={{padding:"12px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-        <span style={{fontSize:18}}>💰</span>
-        <b style={{fontSize:15,flex:1}}>Фінанси</b>
-        <button onClick={()=>loadPayments7d(7)} disabled={paysLoading} title="Повне оновлення (7 днів)" style={{padding:"6px 10px",background:paysLoading?"#e5e7eb":"#e0f2fe",color:paysLoading?"#9ca3af":"#0369a1",border:"1px solid "+(paysLoading?"#d1d5db":"#bae6fd"),borderRadius:8,fontSize:12,fontWeight:700,cursor:paysLoading?"wait":"pointer"}}>{paysLoading?"⏳":"🔄"}</button>
-        <span onClick={()=>setFinanceOpen(false)} style={{cursor:"pointer",fontSize:18,color:T.textSec,padding:"0 4px"}}>✕</span>
+    return <div style={{display:"flex",flexDirection:"column",background:T.surface,height:"100%",width:"100%",flexShrink:0,flex:1,maxWidth:isMobile?"100%":720,margin:isMobile?0:"0 auto"}}>
+      <div style={{padding:"14px 18px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <span style={{fontSize:20}}>💰</span>
+        <b style={{fontSize:17,flex:1}}>Фінанси</b>
+        <button onClick={()=>loadPayments7d(7)} disabled={paysLoading} title="Повне оновлення (7 днів)" style={{padding:"8px 14px",background:paysLoading?"#e5e7eb":"#e0f2fe",color:paysLoading?"#9ca3af":"#0369a1",border:"1px solid "+(paysLoading?"#d1d5db":"#bae6fd"),borderRadius:10,fontSize:13,fontWeight:700,cursor:paysLoading?"wait":"pointer"}}>{paysLoading?"⏳ Оновлення...":"🔄 Оновити"}</button>
       </div>
       {/* Stats */}
       <div style={{padding:"12px 14px",borderBottom:`1px solid ${T.border}`,background:T.surfaceAlt,flexShrink:0}}>
@@ -1094,7 +1090,6 @@ const ProductsPage=()=>{
     {isMobile&&full&&<div style={{padding:"10px 14px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",gap:10,flexShrink:0,background:T.surface}}>
       <div onClick={()=>setSidebarOpen(true)} style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,flexShrink:0}}>☰</div>
       <div style={{fontSize:16,fontWeight:800,flex:1}}>IS EASY <span style={{fontSize:9,background:T.primary,color:"#fff",padding:"2px 7px",borderRadius:5,fontWeight:700}}>CRM</span></div>
-      <div onClick={()=>setFinanceOpen(true)} title="Фінанси" style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14,position:"relative"}}>💰{payments7d.some(p=>!p.is_matched&&!p.matched_order_id&&!p.matched_conversation_id)&&<span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:T.warn,border:"1px solid #fff"}}/>}</div>
       <div onClick={refreshAll} style={{width:32,height:32,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:14}}>🔄</div>
     </div>}
     <div style={{display:"flex",gap:0,borderBottom:`1px solid ${T.border}`,background:T.surfaceAlt}}>
@@ -1546,6 +1541,7 @@ const ProductsPage=()=>{
 
   if(page==="orders") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"📦 Замовлення"}):Header()}{OrdersPage()}{MobileSidebar()}</div>;
   if(page==="products") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"🏷️ Товари"}):Header()}{ProductsPage()}{MobileSidebar()}</div>;
+  if(page==="finance") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"💰 Фінанси"}):Header()}<div style={{flex:1,display:"flex",overflow:"hidden",background:T.bg}}>{FinancePanel({full:true})}</div>{MobileSidebar()}</div>;
   if(page==="analytics") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"📊 Аналітика"}):Header()}{AnalyticsPage()}{MobileSidebar()}</div>;
 
   if(page==="comments"){setPage("crm");return null;}
@@ -1570,7 +1566,7 @@ const ProductsPage=()=>{
     </div>}
 
     {/* MAIN */}
-    {isMobile?<div style={{flex:1,overflow:"hidden",display:"flex",position:"relative"}}>
+    {isMobile?<div style={{flex:1,overflow:"hidden",display:"flex"}}>
       {mobileView==="list"&&<div style={{width:"100%",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}>{ChatList({full:true})}</div>}
       {mobileView==="chat"&&<div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}}>{ChatArea({full:true})}</div>}
       {mobileView==="client"&&conv&&<div style={{width:"100%",display:"flex",flexDirection:"column",height:"100%",animation:slideDir==="left"?"slideInLeft .25s ease":"slideInRight .25s ease"}} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -1580,10 +1576,7 @@ const ProductsPage=()=>{
         </div>
         {RightPanel()}
       </div>}
-      {/* Finance panel as full-screen overlay on mobile */}
-      {financeOpen&&<div style={{position:"absolute",inset:0,background:T.surface,zIndex:50,animation:"slideInLeft .25s ease"}}>{FinancePanel({full:true})}</div>}
     </div>:<div style={{flex:1,display:"flex",overflow:"hidden"}}>
-      {FinancePanel({full:false})}
       {ChatList({})}
       {ChatArea({})}
       {conv&&<div style={{width:340,borderLeft:`1px solid ${T.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>{RightPanel()}</div>}
