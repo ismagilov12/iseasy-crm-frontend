@@ -161,6 +161,8 @@ function App(){
   const[orderTypeModal,setOrderTypeModal]=useState(null);
   const[repairNote,setRepairNote]=useState("");const[returnTtn,setReturnTtn]=useState("");
   const[prodSearch,setProdSearch]=useState("");const[prodCat,setProdCat]=useState("all");const[editingProd,setEditingProd]=useState(null);
+  const[prodTab,setProdTab]=useState("products");const[modalTab,setModalTab]=useState("basic");
+  const[properties,setProperties]=useState([]);const[newPropType,setNewPropType]=useState("");const[newPropValue,setNewPropValue]=useState("");
   const[ordFilter,setOrdFilter]=useState("all");
   const[npSettings,setNpSettings]=useState({senderBranch:"15",senderCity:"Київ",senderPhone:"0501234567",senderName:"IS EASY",controlPay:true,cashOnDelivery:true});
   const[recording,setRecording]=useState(false);
@@ -236,7 +238,7 @@ function App(){
     (async()=>{
       try{
         const[prods,convsRaw,cmts,ordersRaw]=await Promise.all([api("/api/products"),api("/api/conversations"),api("/api/comments"),api("/api/orders?limit=200")]);
-        if(prods&&prods.length>0){const mapped_prods=prods.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[40,41,42,43,44,45]),season:p.season||"літо"})).filter(p=>(p.name&&p.name.trim())||(p.sku&&p.sku.trim()));setProducts(mapped_prods);}
+        if(prods&&prods.length>0){const mapped_prods=prods.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[40,41,42,43,44,45]),season:p.season||"літо",stock_by_size:(typeof p.stock_by_size==="string"?JSON.parse(p.stock_by_size||"{}"):(p.stock_by_size||{})),properties:Array.isArray(p.properties)?p.properties:(typeof p.properties==="string"?JSON.parse(p.properties||"[]"):(p.properties||[])),weight:p.weight||0,length:p.length||0,width:p.width||0,height:p.height||0})).filter(p=>(p.name&&p.name.trim())||(p.sku&&p.sku.trim()));setProducts(mapped_prods);}
         if(convsRaw&&convsRaw.length>0){
           const pMap={};(prods&&prods.length?prods:products).forEach(p=>{pMap[p.id]=p;});
           /* Group orders by conversation_id */
@@ -430,6 +432,8 @@ function App(){
     api("/api/conversations/"+selId+"/messages",{method:"POST",body:JSON.stringify({text:prodText,image_url:pr.img||"",quick_replies:[{title:"✅ Підтвердити",payload:"CONFIRM_ORDER"}]})});
     /* Save order to DB and update local with real ID */
     api("/api/orders",{method:"POST",body:JSON.stringify(dbOrder)}).then(res=>{if(res&&Array.isArray(res)&&res[0]?.id){const realId=res[0].id;setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).map(o=>o.id===now?{...o,id:realId}:o)}:c));}});
+    /* Local stock decrement (mirrors backend) */
+    setProducts(prods=>prods.map(x=>{if(x.id!==pr.id)return x;const sbs={...(x.stock_by_size||{})};const k=String(sz);sbs[k]=Math.max(0,(parseInt(sbs[k])||0)-1);const total=Object.values(sbs).reduce((s,v)=>s+(parseInt(v)||0),0);return{...x,stock_by_size:sbs,stock:total};}));
     noti("Товар додано в замовлення!");}catch(e){console.error("addOrder error",e);noti("Помилка додавання товару");}};
   const removeOrder=(oid)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).filter(o=>o.id!==oid)}:c));api("/api/orders/"+oid,{method:"DELETE"});noti("Замовлення видалено");};
   const updateOrder=(oid,upd)=>{setConvs(p=>p.map(c=>c.id===selId?{...c,orders:(c.orders||[]).map(o=>o.id===oid?{...o,...upd}:o)}:c));
@@ -457,7 +461,7 @@ function App(){
     api("/api/products",{method:"POST",body:JSON.stringify(toSave.map(p=>({id:p.id,name:p.name,sku:p.sku,price:p.price,cost:p.cost,stock:p.stock,sizes:p.sizes,gender:p.gender,category:p.category,img:p.img||p.image_url||""})))}).then(res=>{
       if(res&&Array.isArray(res)&&res.length>0){
         /* Update local products with DB ids */
-        const mapped=res.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[])}));
+        const mapped=res.map(p=>({...p,img:p.image_url||p.photo||p.img||"",sizes:Array.isArray(p.sizes)?p.sizes:(typeof p.sizes==="string"?JSON.parse(p.sizes):p.sizes||[]),stock_by_size:(typeof p.stock_by_size==="string"?JSON.parse(p.stock_by_size||"{}"):(p.stock_by_size||{})),properties:Array.isArray(p.properties)?p.properties:(typeof p.properties==="string"?JSON.parse(p.properties||"[]"):(p.properties||[])),weight:p.weight||0,length:p.length||0,width:p.width||0,height:p.height||0}));
         setProducts(prev=>{const dbIds=new Set(mapped.map(m=>m.id));return[...prev.filter(p=>!dbIds.has(p.id)),...mapped];});
       }
       setProductsDirty(false);
@@ -467,9 +471,51 @@ function App(){
   };
   
   const handleAddProduct=()=>{
-    const newProd={id:Date.now(),name:"Новий товар",sku:"ULT-NEW-"+String(products.length+1).padStart(3,"0"),price:0,cost:0,stock:0,sizes:[40,41,42,43,44,45],gender:"m",category:"Весна-Осінь",img:"",season:"літо"};
-    setEditingProd(newProd);
-    /* productsDirty will be set when user clicks OK in edit modal */
+    const newProd={id:Date.now(),name:"Новий товар",sku:"ULT-NEW-"+String(products.length+1).padStart(3,"0"),price:0,cost:0,stock:0,stock_by_size:{},sizes:[40,41,42,43,44,45],gender:"m",category:"Весна-Осінь",img:"",season:"літо",weight:0.8,length:30,width:20,height:12,properties:[]};
+    setModalTab("basic");setEditingProd(newProd);
+    /* productsDirty will be set when user clicks Save in edit modal */
+  };
+
+  /* Load global property dictionary on mount */
+  React.useEffect(()=>{api("/api/product-properties").then(r=>{if(Array.isArray(r))setProperties(r);}).catch(()=>{});},[]);
+
+  const openEditProduct=(p)=>{setModalTab("basic");setEditingProd({...p,stock_by_size:p.stock_by_size||{},properties:p.properties||[],weight:p.weight||0,length:p.length||0,width:p.width||0,height:p.height||0});};
+
+  const saveProductFromModal=()=>{
+    const ep=editingProd;if(!ep)return;
+    const totalStock=Object.values(ep.stock_by_size||{}).reduce((s,v)=>s+(parseInt(v)||0),0);
+    const merged={...ep,stock:totalStock};
+    const isNew=ep.id>1700000000000;
+    if(isNew){
+      setProducts(p=>[...p,merged]);
+      api("/api/products",{method:"POST",body:JSON.stringify(merged)}).then(res=>{
+        if(res&&Array.isArray(res)&&res[0]?.id){
+          const realId=res[0].id;const r=res[0];
+          setProducts(pr=>pr.map(x=>x.id===ep.id?{...x,id:realId,img:r.image_url||r.photo||x.img,sizes:Array.isArray(r.sizes)?r.sizes:x.sizes}:x));
+        }
+        noti("✅ Товар додано");
+      }).catch(()=>noti("❌ Помилка збереження"));
+    }else{
+      setProducts(pr=>pr.map(x=>x.id===ep.id?merged:x));
+      api("/api/products/"+ep.id,{method:"PUT",body:JSON.stringify(merged)}).then(()=>noti("✅ Збережено")).catch(()=>noti("❌ Помилка збереження"));
+    }
+    setEditingProd(null);
+  };
+
+  const addProperty=()=>{
+    const t=(newPropType||"").trim();const v=(newPropValue||"").trim();
+    if(!t||!v){noti("Вкажіть тип і значення");return;}
+    api("/api/product-properties",{method:"POST",body:JSON.stringify({type:t,value:v,label:v})}).then(res=>{
+      const item=Array.isArray(res)?res[0]:res;
+      if(item&&item.id){setProperties(p=>[...p,item]);setNewPropValue("");noti("✅ Додано");}
+      else noti("❌ Не вдалося додати (можливо вже існує)");
+    }).catch(()=>noti("❌ Помилка"));
+  };
+
+  const deleteProperty=(pid)=>{
+    if(!confirm("Видалити цю властивість?"))return;
+    setProperties(p=>p.filter(x=>x.id!==pid));
+    api("/api/product-properties/"+pid,{method:"DELETE"}).catch(()=>{});
   };
   
   const handleDeleteProduct=(pid)=>{
@@ -843,8 +889,32 @@ const ProductsPage=()=>{
     const handleExportCSV=()=>{const hdr="Назва;Артикул;Ціна;Собівартість;Категорія;Розміри;Стать;Фото\n";const rows=products.map(p=>[p.name,p.sku,p.price,p.cost,p.category,p.sizes.join(","),p.gender==="m"?"Ч":p.gender==="f"?"Ж":"Ж+Ч",p.img].join(";")).join("\n");const blob=new Blob(["\uFEFF"+hdr+rows],{type:"text/csv;charset=utf-8;"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="is-easy-products.csv";a.click();noti("CSV експортовано");};
     const dupProd=(p)=>handleDuplicateProduct(p);
 
+    const propGroups={};(properties||[]).forEach(p=>{if(!propGroups[p.type])propGroups[p.type]=[];propGroups[p.type].push(p);});
     return <div style={{flex:1,overflowY:"auto",padding:isMobile?12:28,animation:"fadeIn .3s ease"}}>
-      {isMobile?(
+      <div style={{display:"flex",gap:8,marginBottom:16,borderBottom:`1px solid ${T.border}`,paddingBottom:8}}>
+        <button onClick={()=>setProdTab("products")} style={{padding:"8px 16px",borderRadius:10,fontSize:13,fontWeight:600,border:prodTab==="products"?"none":`1px solid ${T.border}`,background:prodTab==="products"?T.primary:T.surfaceAlt,color:prodTab==="products"?"#fff":T.text,cursor:"pointer"}}>📦 Товари</button>
+        <button onClick={()=>setProdTab("properties")} style={{padding:"8px 16px",borderRadius:10,fontSize:13,fontWeight:600,border:prodTab==="properties"?"none":`1px solid ${T.border}`,background:prodTab==="properties"?T.primary:T.surfaceAlt,color:prodTab==="properties"?"#fff":T.text,cursor:"pointer"}}>🏷️ Властивості</button>
+      </div>
+      {prodTab==="properties"?(
+        <div style={{maxWidth:720}}>
+          <div style={{background:T.surface,borderRadius:T.cardRadius,padding:16,boxShadow:T.shadow,marginBottom:16,border:`1px solid ${T.border}`}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:10}}>➕ Додати нову властивість</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <input value={newPropType} onChange={e=>setNewPropType(e.target.value)} placeholder="Тип (наприклад: color)" list="prop-types" style={{flex:1,minWidth:160,padding:"9px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+              <datalist id="prop-types"><option value="color"/><option value="size"/><option value="season"/><option value="material"/><option value="style"/></datalist>
+              <input value={newPropValue} onChange={e=>setNewPropValue(e.target.value)} placeholder="Значення (наприклад: чорний)" style={{flex:1,minWidth:160,padding:"9px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+              <button onClick={addProperty} style={{padding:"9px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer",fontSize:13}}>+ Додати</button>
+            </div>
+            <div style={{fontSize:11,color:T.textSec,marginTop:8}}>💡 Властивості зберігаються глобально і прив'язуються до товарів через вкладку «Властивості» у редакторі товару.</div>
+          </div>
+          {Object.keys(propGroups).length===0?<div style={{padding:24,textAlign:"center",color:T.textSec,fontSize:13,background:T.surface,borderRadius:T.cardRadius,border:`1px dashed ${T.border}`}}>Поки немає властивостей. Додайте першу вище.</div>:Object.entries(propGroups).map(([type,vals])=><div key={type} style={{background:T.surface,borderRadius:T.cardRadius,padding:14,boxShadow:T.shadow,marginBottom:12,border:`1px solid ${T.border}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{type} <span style={{color:T.textSec,fontWeight:400}}>({vals.length})</span></div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {vals.map(v=><span key={v.id} style={{padding:"6px 10px 6px 14px",borderRadius:14,fontSize:12,fontWeight:600,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"inline-flex",alignItems:"center",gap:8}}>{v.label||v.value}<span onClick={()=>deleteProperty(v.id)} style={{cursor:"pointer",color:T.danger,fontSize:14,lineHeight:1}}>✕</span></span>)}
+            </div>
+          </div>)}
+        </div>
+      ):isMobile?(
         <div>
           <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
             <input type="text" placeholder="Пошук товару..." value={prodSearch} onChange={e=>setProdSearch(e.target.value)} style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,outline:"none",fontSize:13}}/>
@@ -854,19 +924,19 @@ const ProductsPage=()=>{
             </select>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-            {filt.map(p=>(<div key={p.id} style={{background:T.surface,borderRadius:T.cardRadius,overflow:"hidden",boxShadow:T.shadow,display:"flex",alignItems:"center",gap:10,padding:8}}>
+            {filt.map(p=>{const totalStock=p.stock_by_size?Object.values(p.stock_by_size).reduce((s,v)=>s+(parseInt(v)||0),0):(p.stock||0);return (<div key={p.id} onClick={()=>openEditProduct(p)} style={{background:T.surface,borderRadius:T.cardRadius,overflow:"hidden",boxShadow:T.shadow,display:"flex",alignItems:"center",gap:10,padding:8,cursor:"pointer"}}>
               <div style={{width:56,height:56,borderRadius:12,overflow:"hidden",flexShrink:0,background:T.surfaceAlt,border:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{p.img?<img src={p.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.parentNode.innerText="👟";}}/>:"👟"}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:14,fontWeight:700,color:T.primary,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.sku}</div>
                 <div style={{fontSize:12,fontWeight:500,lineHeight:1.2,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-                <div style={{fontSize:11,color:T.textSec,marginBottom:2}}>{p.season==="демісезон"?"Демісезон":"Літо"}</div>
+                <div style={{fontSize:11,color:T.textSec,marginBottom:2}}>{p.season==="демісезон"?"Демісезон":"Літо"} • 📦 {totalStock} пар</div>
                 <div style={{fontSize:12,fontWeight:700,marginTop:2}}>{(p.season==="демісезон"?p.price+500:p.price)}₴ <span style={{fontWeight:400,color:T.textSec,fontSize:11}}>| с/в {p.cost}₴</span></div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
-                <button onClick={()=>setEditingProd(p)} style={{padding:"5px 10px",fontSize:10,background:T.primary,color:"#fff",border:"none",borderRadius:6,cursor:"pointer"}}>✎</button>
-                <button onClick={()=>handleDeleteProduct(p.id)} style={{padding:"5px 10px",fontSize:10,background:T.dangerLight,color:T.danger,border:"none",borderRadius:6,cursor:"pointer"}}>✕</button>
+                <button onClick={e=>{e.stopPropagation();openEditProduct(p);}} style={{padding:"5px 10px",fontSize:10,background:T.primary,color:"#fff",border:"none",borderRadius:6,cursor:"pointer"}}>✎</button>
+                <button onClick={e=>{e.stopPropagation();handleDeleteProduct(p.id);}} style={{padding:"5px 10px",fontSize:10,background:T.dangerLight,color:T.danger,border:"none",borderRadius:6,cursor:"pointer"}}>✕</button>
               </div>
-            </div>))}
+            </div>);})}
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={handleCSV} style={{flex:1,padding:"10px",background:T.accent,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>📥 CSV</button>
@@ -890,26 +960,127 @@ const ProductsPage=()=>{
       </div>
       <div className="card">
         <div style={{overflowX:"auto"}}><table>
-          <thead><tr><th style={{width:50}}>Фото</th><th>Назва</th><th>Артикул</th><th>Категорія</th><th>Розміри</th><th>Собівартість</th><th>Ціна</th><th>Сезон</th><th>Дії</th></tr></thead>
-          <tbody>{filt.map(p=><tr key={p.id}>
+          <thead><tr><th style={{width:50}}>Фото</th><th>Назва</th><th>Артикул</th><th>Категорія</th><th>Розміри</th><th>📦 Наявність</th><th>Собівартість</th><th>Ціна</th><th>Сезон</th><th>Дії</th></tr></thead>
+          <tbody>{filt.map(p=>{const totalStock=p.stock_by_size?Object.values(p.stock_by_size).reduce((s,v)=>s+(parseInt(v)||0),0):(p.stock||0);return <tr key={p.id} onClick={()=>openEditProduct(p)} style={{cursor:"pointer"}}>
             <td><div style={{width:44,height:44,borderRadius:10,background:T.surfaceAlt,border:`1px solid ${T.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{p.img?<img src={p.img} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";e.target.parentNode.innerText="👟";}}/>:"👟"}</div></td>
-            <td><input value={p.name} onChange={e=>{const v=e.target.value;handleUpdateProduct(p.id,"name",v);}} style={{border:"none",fontWeight:600,fontSize:13,width:"100%",outline:"none",background:"transparent"}}/></td>
-            <td><input value={p.sku} onChange={e=>{const v=e.target.value;handleUpdateProduct(p.id,"sku",v);}} style={{border:"none",fontSize:12,color:T.textSec,width:120,outline:"none",background:"transparent"}}/></td>
-            <td><input value={p.category} onChange={e=>{const v=e.target.value;handleUpdateProduct(p.id,"category",v);}} style={{border:"none",fontSize:12,width:110,outline:"none",background:"transparent"}}/></td>
-            <td style={{fontSize:11}}>{p.sizes[0]}-{p.sizes[p.sizes.length-1]} <select value={p.gender} onChange={e=>{const v=e.target.value;const sz=v==="m"?[40,41,42,43,44,45]:v==="f"?[36,37,38,39,40,41]:[36,37,38,39,40,41,42,43,44,45];handleUpdateProduct(p.id,"gender",v);handleUpdateProduct(p.id,"sizes",sz);}} style={{border:"none",fontSize:10,outline:"none",background:"transparent"}}><option value="m">Ч</option><option value="f">Ж</option><option value="u">Ж+Ч</option></select></td>
-            <td><input type="number" value={p.cost} onChange={e=>{const v=parseInt(e.target.value)||0;handleUpdateProduct(p.id,"cost",v);}} style={{border:"none",width:60,fontSize:12,outline:"none",background:"transparent"}}/></td>
-            <td><input type="number" value={p.price} onChange={e=>{const v=parseInt(e.target.value)||0;handleUpdateProduct(p.id,"price",v);}} style={{border:"none",width:60,fontSize:13,fontWeight:700,outline:"none",background:"transparent"}}/></td>
-            <td><select value={p.season||"літо"} onChange={e=>handleUpdateProduct(p.id,"season",e.target.value)} style={{border:"none",fontSize:12,outline:"none",background:"transparent",fontWeight:600}}><option value="літо">Літо</option><option value="демісезон">Демісезон</option></select></td>
-            <td style={{fontSize:12,fontWeight:700,color:T.primary}}>{p.season==="демісезон"?(p.price||0)+500:p.price||0}₴</td>
+            <td style={{fontWeight:600,fontSize:13}}>{p.name}</td>
+            <td style={{fontSize:12,color:T.textSec}}>{p.sku}</td>
+            <td style={{fontSize:12}}>{p.category}</td>
+            <td style={{fontSize:11}}>{(p.sizes||[])[0]}-{(p.sizes||[])[(p.sizes||[]).length-1]} <span style={{color:T.textSec}}>({p.gender==="m"?"Ч":p.gender==="f"?"Ж":"Ж+Ч"})</span></td>
+            <td style={{fontSize:12,fontWeight:700,color:totalStock>0?T.primary:T.danger}}>{totalStock} пар</td>
+            <td style={{fontSize:12}}>{p.cost||0}₴</td>
+            <td style={{fontSize:13,fontWeight:700,color:T.primary}}>{p.season==="демісезон"?(p.price||0)+500:p.price||0}₴</td>
+            <td style={{fontSize:12,fontWeight:600}}>{p.season==="демісезон"?"Демі":"Літо"}</td>
             <td><div style={{display:"flex",gap:4}}>
-              <button onClick={()=>dupProd(p)} style={{padding:"4px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,cursor:"pointer",background:T.surfaceAlt}} title="Дублювати">📋</button>
-              <button onClick={()=>handleDeleteProduct(p.id)} style={{padding:"4px 10px",border:"1px solid #fecaca",borderRadius:8,fontSize:11,cursor:"pointer",background:"#fef2f2",color:T.danger}} title="Видалити">✕</button>
+              <button onClick={e=>{e.stopPropagation();dupProd(p);}} style={{padding:"4px 10px",border:`1px solid ${T.border}`,borderRadius:8,fontSize:11,cursor:"pointer",background:T.surfaceAlt}} title="Дублювати">📋</button>
+              <button onClick={e=>{e.stopPropagation();handleDeleteProduct(p.id);}} style={{padding:"4px 10px",border:"1px solid #fecaca",borderRadius:8,fontSize:11,cursor:"pointer",background:"#fef2f2",color:T.danger}} title="Видалити">✕</button>
             </div></td>
-          </tr>)}</tbody>
+          </tr>;})}</tbody>
         </table></div>
       </div></div>
       )}
     </div>;};
+
+  /* ═══ PRODUCT EDIT MODAL (tabbed: Basic / Stock / NP / Properties) ═══ */
+  const ProductEditModal=()=>{
+    if(!editingProd)return null;
+    const ep=editingProd;const isNew=ep.id>1700000000000;
+    const totalStock=Object.values(ep.stock_by_size||{}).reduce((s,v)=>s+(parseInt(v)||0),0);
+    const groups={};(properties||[]).forEach(p=>{if(!groups[p.type])groups[p.type]=[];groups[p.type].push(p);});
+    const selSet=new Set((ep.properties||[]).map(String));
+    const tabs=[["basic","Основне"],["stock","Розміри + Наявність"],["np","Нова Пошта"],["props","Властивості"]];
+    return <div onClick={()=>setEditingProd(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,borderRadius:20,width:580,maxWidth:"100%",maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:T.shadowLg,animation:"fadeIn .2s ease",overflow:"hidden"}}>
+        <div style={{padding:"18px 22px 12px",borderBottom:`1px solid ${T.border}`}}>
+          <div style={{fontSize:17,fontWeight:700,marginBottom:14}}>{isNew?"➕ Новий товар":"✎ Редагувати товар"}{ep.name&&!isNew?" — "+ep.name:""}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {tabs.map(([k,l])=><button key={k} onClick={()=>setModalTab(k)} style={{padding:"7px 14px",borderRadius:10,fontSize:12,fontWeight:600,border:modalTab===k?"none":`1px solid ${T.border}`,background:modalTab===k?T.primary:T.surfaceAlt,color:modalTab===k?"#fff":T.text,cursor:"pointer"}}>{l}</button>)}
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"18px 22px"}}>
+          {modalTab==="basic"&&<div>
+            {[["Назва","name","text"],["Артикул (SKU)","sku","text"],["Категорія","category","text"]].map(([l,k,t])=><div key={k} style={{marginBottom:12}}>
+              <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{l}</label>
+              <input type={t} value={ep[k]||""} onChange={e=>setEditingProd(p=>({...p,[k]:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+            </div>)}
+            <div style={{display:"flex",gap:10,marginBottom:12}}>
+              <div style={{flex:1}}>
+                <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Себестоимость, ₴</label>
+                <input type="number" value={ep.cost||0} onChange={e=>setEditingProd(p=>({...p,cost:parseInt(e.target.value)||0}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+              </div>
+              <div style={{flex:1}}>
+                <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Ціна, ₴</label>
+                <input type="number" value={ep.price||0} onChange={e=>setEditingProd(p=>({...p,price:parseInt(e.target.value)||0}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10,marginBottom:12}}>
+              <div style={{flex:1}}>
+                <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Стать</label>
+                <select value={ep.gender||"m"} onChange={e=>{const g=e.target.value;const sz=g==="m"?[40,41,42,43,44,45]:g==="f"?[36,37,38,39,40,41]:[36,37,38,39,40,41,42,43,44,45];setEditingProd(p=>({...p,gender:g,sizes:sz}));}} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}>
+                  <option value="m">Чоловіки</option><option value="f">Жінки</option><option value="u">Усі</option>
+                </select>
+              </div>
+              <div style={{flex:1}}>
+                <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Сезон</label>
+                <select value={ep.season||"літо"} onChange={e=>setEditingProd(p=>({...p,season:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}>
+                  <option value="літо">Літо</option><option value="демісезон">Демісезон</option>
+                </select>
+              </div>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>URL фото</label>
+              <input value={ep.img||""} onChange={e=>setEditingProd(p=>({...p,img:e.target.value}))} placeholder="https://..." style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+              {ep.img&&<div style={{marginTop:8,width:80,height:80,borderRadius:10,overflow:"hidden",border:`1px solid ${T.border}`}}><img src={ep.img} style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>e.target.style.display="none"}/></div>}
+            </div>
+          </div>}
+          {modalTab==="stock"&&<div>
+            <div style={{fontSize:12,color:T.textSec,marginBottom:10}}>Введіть кількість пар по кожному розміру. Загалом: <b style={{color:T.text}}>{totalStock} пар</b></div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+              {(ep.sizes||[]).map(sz=><div key={sz} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",border:`1px solid ${T.border}`,borderRadius:10,background:T.surfaceAlt}}>
+                <span style={{fontWeight:700,fontSize:14,minWidth:24}}>{sz}</span>
+                <input type="number" min="0" value={(ep.stock_by_size||{})[sz]||0} onChange={e=>{const v=parseInt(e.target.value)||0;setEditingProd(p=>({...p,stock_by_size:{...(p.stock_by_size||{}),[sz]:v}}));}} style={{flex:1,padding:"6px 10px",border:`1px solid ${T.border}`,borderRadius:6,fontSize:13,outline:"none",width:"100%"}}/>
+              </div>)}
+            </div>
+            {(!ep.sizes||ep.sizes.length===0)&&<div style={{padding:14,textAlign:"center",color:T.textSec,fontSize:13}}>Немає розмірів. Виберіть стать у вкладці «Основне».</div>}
+            <div style={{marginTop:14,padding:"10px 14px",background:T.surfaceAlt,borderRadius:10,fontSize:11,color:T.textSec}}>
+              💡 Підказка: при додаванні товару в замовлення кількість по обраному розміру буде автоматично списана.
+            </div>
+          </div>}
+          {modalTab==="np"&&<div>
+            <div style={{fontSize:12,color:T.textSec,marginBottom:14}}>Параметри для створення накладної Нової Пошти.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+              {[["Довжина (см)","length"],["Ширина (см)","width"],["Висота (см)","height"]].map(([l,k])=><div key={k}>
+                <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{l}</label>
+                <input type="number" min="0" value={ep[k]||0} onChange={e=>setEditingProd(p=>({...p,[k]:parseInt(e.target.value)||0}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+              </div>)}
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Вага (кг)</label>
+              <input type="number" min="0" step="0.01" value={ep.weight||0} onChange={e=>setEditingProd(p=>({...p,weight:parseFloat(e.target.value)||0}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>
+            </div>
+            <div style={{marginBottom:6}}>
+              <label style={{fontSize:11,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>Опис вантажу</label>
+              <input value={ep.sku||""} disabled style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt,color:T.textSec}}/>
+              <div style={{fontSize:10,color:T.textSec,marginTop:4}}>Опис автоматично береться з артикула товару.</div>
+            </div>
+          </div>}
+          {modalTab==="props"&&<div>
+            {Object.keys(groups).length===0?<div style={{padding:20,textAlign:"center",color:T.textSec,fontSize:13}}>Немає властивостей. Додайте їх у вкладці «Властивості» розділу Товари.</div>:Object.entries(groups).map(([type,vals])=><div key={type} style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:T.textSec,textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>{type}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {vals.map(v=>{const on=selSet.has(String(v.id));return <span key={v.id} onClick={()=>{setEditingProd(p=>{const cur=(p.properties||[]).map(String);const next=on?cur.filter(x=>x!==String(v.id)):[...cur,String(v.id)];return{...p,properties:next.map(Number)};});}} style={{padding:"6px 12px",borderRadius:14,fontSize:12,fontWeight:600,cursor:"pointer",border:on?"none":`1px solid ${T.border}`,background:on?T.primary:T.surfaceAlt,color:on?"#fff":T.text}}>{v.label||v.value}</span>;})}
+              </div>
+            </div>)}
+          </div>}
+        </div>
+        <div style={{padding:"14px 22px",borderTop:`1px solid ${T.border}`,display:"flex",gap:10}}>
+          {!isNew&&<button onClick={()=>{if(confirm("Видалити товар назавжди?")){handleDeleteProduct(ep.id);setEditingProd(null);}}} style={{padding:"10px 16px",background:T.dangerLight,border:"1px solid #fecaca",color:T.danger,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:600}}>🗑</button>}
+          <button onClick={()=>setEditingProd(null)} style={{padding:"10px 18px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
+          <button onClick={saveProductFromModal} style={{flex:1,padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer"}}>💾 Зберегти</button>
+        </div>
+      </div>
+    </div>;
+  };
 
   /* ═══ RIGHT PANEL ═══ */
   const RightPanel=()=>{if(!conv)return null;const orders=conv.orders||[];
@@ -1540,7 +1711,7 @@ const ProductsPage=()=>{
   </div>:null;
 
   if(page==="orders") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"📦 Замовлення"}):Header()}{OrdersPage()}{MobileSidebar()}</div>;
-  if(page==="products") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"🏷️ Товари"}):Header()}{ProductsPage()}{MobileSidebar()}</div>;
+  if(page==="products") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"🏷️ Товари"}):Header()}{ProductsPage()}{MobileSidebar()}{ProductEditModal()}</div>;
   if(page==="finance") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"💰 Фінанси"}):Header()}<div style={{flex:1,display:"flex",overflow:"hidden",background:T.bg}}>{FinancePanel({full:true})}</div>{MobileSidebar()}</div>;
   if(page==="analytics") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"📊 Аналітика"}):Header()}{AnalyticsPage()}{MobileSidebar()}</div>;
 
@@ -1626,25 +1797,8 @@ const ProductsPage=()=>{
       </div>
     </div>}
 
-    {/* PRODUCT EDIT MODAL */}
-    {editingProd&&<div onClick={()=>setEditingProd(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.35)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,borderRadius:20,padding:26,width:500,maxWidth:"100%",boxShadow:T.shadowLg,animation:"fadeIn .2s ease",maxHeight:"90vh",overflowY:"auto"}}>
-        <div style={{fontSize:17,fontWeight:700,marginBottom:16}}>{editingProd.id===undefined||editingProd.id>1700000000000?"Новий товар":"Редагувати товар"}</div>
-        {[["Назва","name"],["Артикул","sku"],["Ціна","price"],["Собівартість","cost"],["Категорія","category"],["Стать","gender"],["Сезон","season"]].map(([label,key])=>{
-          const opts=key==="gender"?{m:"Чоловіки",f:"Жінки",u:"Усі"}:key==="season"?{літо:"Літо",демісезон:"Демісезон"}:null;
-          return <div key={key} style={{marginBottom:12}}>
-            <label style={{fontSize:12,fontWeight:600,color:T.textSec,display:"block",marginBottom:4}}>{label}</label>
-            {opts?<select value={editingProd[key]||""} onChange={e=>setEditingProd(p=>({...p,[key]:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}>
-              {Object.entries(opts).map(([k,v])=><option key={k} value={k}>{v}</option>)}
-            </select>:key==="price"||key==="cost"?<input type="number" value={editingProd[key]||0} onChange={e=>setEditingProd(p=>({...p,[key]:parseInt(e.target.value)||0}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>:<input value={editingProd[key]||""} onChange={e=>setEditingProd(p=>({...p,[key]:e.target.value}))} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,outline:"none",background:T.surfaceAlt}}/>}
-          </div>;
-        })}
-        <div style={{display:"flex",gap:10,marginTop:16}}>
-          <button onClick={()=>setEditingProd(null)} style={{padding:"10px 18px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
-          <button onClick={()=>{if(editingProd.id>1700000000000){setProducts(p=>[...p,editingProd]);setProductsDirty(true);noti("Товар додано. Натисніть 💾 Зберегти в базу");}else{setProducts(pr=>pr.map(x=>x.id===editingProd.id?editingProd:x));setProductsDirty(true);noti("Зміни внесено. Натисніть 💾 Зберегти в базу");}setEditingProd(null);}} style={{flex:1,padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:600,cursor:"pointer"}}>OK</button>
-        </div>
-      </div>
-    </div>}
+    {/* PRODUCT EDIT MODAL (tabbed) */}
+    {ProductEditModal()}
 
     {/* PRODUCT PICKER (global — works from chat input AND client card) */}
     {showProdPicker&&ProductPicker({onSelect:(p)=>{setProdModal(p);setSelSize(null);setShowProdPicker(false);},onClose:()=>setShowProdPicker(false)})}
