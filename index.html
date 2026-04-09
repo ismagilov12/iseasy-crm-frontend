@@ -706,11 +706,31 @@ function App(){
   const[agentTokenDraft,setAgentTokenDraft]=useState("");
   const[agentHasToken,setAgentHasToken]=useState(!!getAgentToken());
   const[agentBusyId,setAgentBusyId]=useState(null);
+  const[chatMessages,setChatMessages]=useState([]);
+  const[chatInput,setChatInput]=useState("");
+  const[chatSending,setChatSending]=useState(false);
+  const[chatModel,setChatModel]=useState("claude-opus-4-6");
+  const chatScrollRef=useRef(null);
+
+  const sendChat=async()=>{
+    const text=chatInput.trim();if(!text||chatSending)return;
+    const userMsg={role:"user",text,ts:Date.now()};
+    setChatMessages(m=>[...m,userMsg]);
+    setChatInput("");setChatSending(true);
+    const r=await agentApi("/api/agent/chat",{method:"POST",body:JSON.stringify({prompt:text,model:chatModel,max_turns:8})});
+    setChatSending(false);
+    if(r&&r.error){
+      setChatMessages(m=>[...m,{role:"agent",text:"❌ Помилка: "+r.error+(r.detail?" — "+JSON.stringify(r.detail).substring(0,200):""),ts:Date.now(),error:true}]);
+      return;
+    }
+    setChatMessages(m=>[...m,{role:"agent",text:r.final_text||"(порожня відповідь)",trace:r.trace||[],turns:r.turns_used,usage:r.usage,ts:Date.now()}]);
+    setTimeout(()=>{if(chatScrollRef.current)chatScrollRef.current.scrollTop=chatScrollRef.current.scrollHeight;},50);
+  };
 
   const loadAgentPending=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/pending?status=pending&limit=50");if(r&&!r.error&&Array.isArray(r.items))setAgentPending(r.items);else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
   const loadAgentHistory=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/actions?limit=50");if(r&&!r.error&&Array.isArray(r.items))setAgentHistory(r.items);else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
 
-  useEffect(()=>{if(page!=="agent")return;if(!getAgentToken()){setAgentHasToken(false);return;}setAgentHasToken(true);if(agentTab==="pending")loadAgentPending();else loadAgentHistory();/* eslint-disable-next-line */},[page,agentTab]);
+  useEffect(()=>{if(page!=="agent")return;if(!getAgentToken()){setAgentHasToken(false);return;}setAgentHasToken(true);if(agentTab==="pending")loadAgentPending();else if(agentTab==="history")loadAgentHistory();/* eslint-disable-next-line */},[page,agentTab]);
 
   const approveAgent=async(id)=>{setAgentBusyId(id);const r=await agentApi(`/api/agent/pending/${id}/approve`,{method:"POST"});setAgentBusyId(null);if(r&&!r.error){noti("Дію підтверджено");loadAgentPending();}else noti("Помилка: "+(r?.error||"?"));};
   const rejectAgent=async(id)=>{setAgentBusyId(id);const r=await agentApi(`/api/agent/pending/${id}/reject`,{method:"POST"});setAgentBusyId(null);if(r&&!r.error){noti("Відхилено");loadAgentPending();}else noti("Помилка: "+(r?.error||"?"));};
@@ -734,7 +754,7 @@ function App(){
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
         <div style={{fontSize:isMobile?18:22,fontWeight:800,display:"flex",alignItems:"center",gap:8}}>🤖 AI Agent</div>
         <div style={{display:"flex",gap:4,background:T.surface,borderRadius:12,padding:4,border:`1px solid ${T.border}`}}>
-          {[["pending","⏳ Очікують",agentPending.length],["history","📜 Історія",null]].map(([id,lb,cnt])=>
+          {[["chat","💬 Чат",null],["pending","⏳ Очікують",agentPending.length],["history","📜 Історія",null]].map(([id,lb,cnt])=>
             <div key={id} onClick={()=>setAgentTab(id)} style={{padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,background:agentTab===id?T.primary:"transparent",color:agentTab===id?"#fff":T.text,transition:"all .15s"}}>{lb}{cnt>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:10,background:agentTab===id?"rgba(255,255,255,.3)":T.danger,color:"#fff",fontSize:11}}>{cnt}</span>}</div>)}
         </div>
         <div style={{flex:1}}/>
@@ -742,7 +762,45 @@ function App(){
         <button onClick={()=>{if(!confirm("Скинути токен?"))return;localStorage.removeItem(AGENT_LS_KEY);setAgentHasToken(false);}} style={{padding:"8px 14px",background:T.surface,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,cursor:"pointer",color:T.textSec}}>⚙️</button>
       </div>
 
-      {agentLoading&&<div style={{textAlign:"center",padding:40,color:T.textSec}}>Завантаження...</div>}
+      {agentLoading&&agentTab!=="chat"&&<div style={{textAlign:"center",padding:40,color:T.textSec}}>Завантаження...</div>}
+
+      {agentTab==="chat"&&<div style={{display:"flex",flexDirection:"column",gap:12,height:"calc(100vh - 180px)",maxHeight:isMobile?"calc(100vh - 160px)":"calc(100vh - 200px)"}}>
+        <div ref={chatScrollRef} style={{flex:1,overflowY:"auto",padding:isMobile?8:16,background:T.surface,borderRadius:12,border:`1px solid ${T.border}`,display:"flex",flexDirection:"column",gap:12}}>
+          {chatMessages.length===0&&<div style={{textAlign:"center",color:T.textSec,fontSize:13,padding:40}}>
+            <div style={{fontSize:32,marginBottom:8}}>🤖</div>
+            <div style={{fontWeight:600,marginBottom:4}}>Чат з AI-агентом IS EASY</div>
+            <div style={{fontSize:12,maxWidth:480,margin:"0 auto"}}>Напишіть що потрібно зробити — агент сам обере інструменти CRM (пошук клієнта, створення замовлення, відповідь у IG, задача тощо). Ризиковані дії підуть у чергу «Очікують».</div>
+            <div style={{marginTop:16,display:"flex",flexDirection:"column",gap:6,maxWidth:420,margin:"16px auto 0"}}>
+              {["Клієнт @olha_k питає про чорні кеди 40","Покажи статистику за тиждень","Скільки непривʼязаних платежів зараз?"].map(ex=>
+                <div key={ex} onClick={()=>setChatInput(ex)} style={{padding:"8px 12px",background:T.surfaceAlt,borderRadius:8,fontSize:12,cursor:"pointer",textAlign:"left",border:`1px solid ${T.border}`}}>💡 {ex}</div>)}
+            </div>
+          </div>}
+          {chatMessages.map((m,i)=><div key={i} style={{display:"flex",flexDirection:"column",alignItems:m.role==="user"?"flex-end":"flex-start"}}>
+            <div style={{maxWidth:isMobile?"90%":"75%",padding:"10px 14px",borderRadius:14,background:m.role==="user"?T.primary:(m.error?T.danger+"18":T.surfaceAlt),color:m.role==="user"?"#fff":(m.error?T.danger:T.text),fontSize:13,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",border:m.role==="user"?"none":`1px solid ${T.border}`}}>{m.text}</div>
+            {m.trace&&m.trace.length>0&&<details style={{marginTop:4,fontSize:10,color:T.textSec,maxWidth:isMobile?"90%":"75%"}}>
+              <summary style={{cursor:"pointer",userSelect:"none"}}>🔧 Trace ({m.trace.filter(t=>t.type==="tool_use").length} інстр., {m.turns} turns{m.usage?(", "+m.usage.input_tokens+"→"+m.usage.output_tokens+" tok"):""})</summary>
+              <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4,padding:8,background:T.surface,borderRadius:8,border:`1px solid ${T.border}`}}>
+                {m.trace.map((t,ti)=><div key={ti} style={{fontSize:10}}>
+                  {t.type==="text"&&<div style={{color:T.textSec,fontStyle:"italic"}}>💭 {t.text.substring(0,200)}</div>}
+                  {t.type==="tool_use"&&<div><span style={{background:toolBadgeColor(t.name)+"22",color:toolBadgeColor(t.name),padding:"1px 6px",borderRadius:4,fontWeight:700}}>{t.name}</span> <code style={{color:T.textSec}}>{JSON.stringify(t.input).substring(0,120)}</code></div>}
+                  {t.type==="tool_result"&&<div style={{color:t.result?.status==="error"?T.danger:(t.result?.status==="pending"?T.warn:T.accent),paddingLeft:10}}>→ {t.result?.status}{t.result?.pending_id?` #${t.result.pending_id}`:""}{t.result?.error?(": "+t.result.error):""}</div>}
+                </div>)}
+              </div>
+            </details>}
+          </div>)}
+          {chatSending&&<div style={{alignSelf:"flex-start",padding:"10px 14px",background:T.surfaceAlt,borderRadius:14,fontSize:13,color:T.textSec,border:`1px solid ${T.border}`}}>⏳ Агент думає...</div>}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+          <select value={chatModel} onChange={e=>setChatModel(e.target.value)} style={{padding:"10px 8px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:12,background:T.surface,color:T.text}}>
+            <option value="claude-opus-4-6">Opus 4.6</option>
+            <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+          </select>
+          <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder="Напишіть запит менеджера..." rows={isMobile?2:2} style={{flex:1,padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",background:T.surface,color:T.text}}/>
+          <button onClick={sendChat} disabled={chatSending||!chatInput.trim()} style={{padding:"10px 18px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:700,cursor:chatSending?"not-allowed":"pointer",opacity:chatSending||!chatInput.trim()?.5:1,whiteSpace:"nowrap"}}>{chatSending?"…":"↑ Надіслати"}</button>
+          {chatMessages.length>0&&<button onClick={()=>{if(confirm("Очистити чат?"))setChatMessages([]);}} style={{padding:"10px 12px",background:T.surface,color:T.textSec,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,fontSize:13,cursor:"pointer"}}>🗑</button>}
+        </div>
+      </div>}
 
       {agentTab==="pending"&&!agentLoading&&<>
         {agentPending.length===0?<div style={{textAlign:"center",padding:60,color:T.textSec,fontSize:14}}>✨ Черга порожня — усі дії агента виконуються автоматично</div>:
