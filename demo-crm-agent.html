@@ -224,6 +224,41 @@ input,select,textarea{font:inherit}
 .intro .b{font-weight:800;color:var(--primary)}
 .intro .close-x{padding:0 6px;color:var(--textMuted);cursor:pointer;font-size:18px}
 
+/* ═══ DAILY REPORTS OVERLAY ═══ */
+.reports-ovl{position:fixed;inset:0;background:rgba(15,23,42,.62);backdrop-filter:blur(6px);z-index:600;display:none;align-items:center;justify-content:center;padding:24px;overflow-y:auto}
+.reports-ovl.on{display:flex;animation:fadeOv .25s ease}
+.reports-card{background:var(--surface);border-radius:20px;max-width:1100px;width:100%;box-shadow:var(--shadowLg);animation:popIn .35s cubic-bezier(.18,.89,.32,1.28);overflow:hidden;max-height:92vh;display:flex;flex-direction:column}
+.reports-head{padding:18px 24px;background:linear-gradient(135deg,#eef2ff,#fce7f3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.reports-head .ic{font-size:30px}
+.reports-head .ti{flex:1;min-width:0}
+.reports-head .ti h3{font-size:19px;font-weight:800;color:var(--text);margin-bottom:2px}
+.reports-head .ti .s{font-size:12px;color:var(--textSec)}
+.reports-head .ai-tag{padding:5px 12px;background:var(--primary);color:#fff;border-radius:14px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px}
+.reports-head .close{padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;color:var(--textSec);cursor:pointer}
+.reports-body{padding:20px 24px;overflow-y:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.rep-card{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.rep-card h4{font-size:10px;font-weight:800;text-transform:uppercase;color:var(--textSec);letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:5px}
+.rep-card h4 .dot{width:6px;height:6px;border-radius:50%;background:var(--primary)}
+.rep-card.top h4 .dot{background:#8b5cf6}
+.rep-card.faq h4 .dot{background:#10b981}
+.rep-card.ref h4 .dot{background:#ef4444}
+.rep-card.sales h4 .dot{background:#f59e0b}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:11px}
+.bar-row:last-child{margin-bottom:0}
+.bar-row .lbl{min-width:90px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-row .bar{flex:1;height:8px;background:var(--border);border-radius:6px;overflow:hidden;position:relative}
+.bar-row .bar > div{height:100%;border-radius:6px;transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.bar-row .val{min-width:36px;text-align:right;font-weight:700;font-size:11px;color:var(--textSec)}
+.sales-big{font-size:32px;font-weight:900;color:var(--text);line-height:1;margin-bottom:4px;letter-spacing:-.5px}
+.sales-big small{font-size:16px;color:var(--textSec);font-weight:700}
+.sales-delta{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#ecfdf5;color:#059669;border-radius:10px;font-size:11px;font-weight:700;margin-bottom:10px}
+.spark{height:48px;display:flex;align-items:flex-end;gap:4px;margin-bottom:8px}
+.spark .b{flex:1;background:linear-gradient(180deg,#8b5cf6,#4f46e5);border-radius:4px 4px 0 0;min-height:12%;transition:height 1s ease}
+.sales-legend{display:flex;gap:10px;font-size:10px;color:var(--textSec);flex-wrap:wrap}
+.sales-legend b{color:var(--text);font-weight:800;font-size:12px;display:block}
+.reports-foot{padding:12px 24px;background:var(--surfaceAlt);border-top:1px solid var(--border);font-size:11px;color:var(--textSec);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.reports-foot b{color:var(--primary);font-weight:800}
+
 /* ═══ MOBILE ═══ */
 @media(max-width:960px){
   .col.left{width:260px}
@@ -242,6 +277,11 @@ input,select,textarea{font:inherit}
   .mgr-body{padding:10px 12px;gap:8px}
   .modal{padding:20px}
   .ctrl-btn{padding:6px 10px;font-size:11px}
+  .reports-body{grid-template-columns:1fr 1fr;padding:14px}
+  .reports-head{padding:12px 14px}
+}
+@media(max-width:540px){
+  .reports-body{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -263,9 +303,10 @@ input,select,textarea{font:inherit}
       <button class="ctrl-btn sec" id="btnStep" title="Наступний крок">⏭</button>
       <button class="ctrl-btn sec" id="btnReset" title="Скинути">🔄</button>
       <div class="speed-wrap">
-        <input type="range" id="speedR" min="0.5" max="10" step="0.5" value="4">
-        <b id="speedV">4×</b>
+        <input type="range" id="speedR" min="0.5" max="10" step="0.5" value="0.5">
+        <b id="speedV">0.5×</b>
       </div>
+      <button class="ctrl-btn sec" id="btnReports" title="Звіти за день">📊 Звіти</button>
       <button class="ctrl-btn sec" id="btnInfo" title="Пояснення">❓</button>
     </div>
   </div>
@@ -346,6 +387,54 @@ input,select,textarea{font:inherit}
         </div>
         <div class="mgr-list" id="taskList"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- DAILY REPORTS OVERLAY -->
+<div class="reports-ovl" id="repOvl">
+  <div class="reports-card">
+    <div class="reports-head">
+      <div class="ic">📊</div>
+      <div class="ti">
+        <h3>Звіти за день</h3>
+        <div class="s">Згенеровано AI-агентом · 20:00 щоденно · 09.04.2026</div>
+      </div>
+      <div class="ai-tag">🤖 AI-агент</div>
+      <button class="close" id="repClose">✕ Закрити</button>
+    </div>
+    <div class="reports-body">
+      <!-- Top products week -->
+      <div class="rep-card top">
+        <h4><span class="dot"></span>🏆 Топ товарів тижня</h4>
+        <div id="repTop"></div>
+      </div>
+      <!-- FAQ -->
+      <div class="rep-card faq">
+        <h4><span class="dot"></span>❓ Часті питання клієнтів</h4>
+        <div id="repFaq"></div>
+      </div>
+      <!-- Refusal reasons -->
+      <div class="rep-card ref">
+        <h4><span class="dot"></span>❌ Причини відмов</h4>
+        <div id="repRef"></div>
+      </div>
+      <!-- Sales 7 days -->
+      <div class="rep-card sales">
+        <h4><span class="dot"></span>💰 Продажі за 7 днів</h4>
+        <div class="sales-big">19 830<small>₴</small></div>
+        <div class="sales-delta">▲ +18% до минулого тижня</div>
+        <div class="spark" id="repSpark"></div>
+        <div class="sales-legend">
+          <div><b>7</b>замовлень</div>
+          <div><b>2 833₴</b>сер. чек</div>
+          <div><b>38%</b>конверсія</div>
+        </div>
+      </div>
+    </div>
+    <div class="reports-foot">
+      <span>💡 AI генерує цей звіт кожен день о 20:00 · відправляє в Telegram власнику</span>
+      <span><b>0 хв</b> часу менеджера на підготовку</span>
     </div>
   </div>
 </div>
@@ -1008,6 +1097,25 @@ function doStep(){
   const steps=currentSteps();
   if(S.cursor>=steps.length){
     stopPlayback();
+    // When scenario finishes — show "next scenario" modal
+    const hasNext=S.scenarioIdx<SCENARIOS.length-1;
+    if(hasNext){
+      const nextIdx=S.scenarioIdx+1;
+      const nextSc=SCENARIOS[nextIdx];
+      showExplanation({
+        ic:"✅",tag:"Сценарій завершено",title:"Переходимо до наступного",
+        text:`Сценарій "${SCENARIOS[S.scenarioIdx].title}" завершено. Наступний: "${nextSc.title}".`,
+        how:`<b>Що буде далі:</b> ${nextSc.steps.find(s=>s.type==="expl")?.text||"новий сценарій AI-агента у дії"}`,
+        nextScenario:nextIdx
+      });
+    }else{
+      showExplanation({
+        ic:"🏆",tag:"Демо завершено",title:"Всі 5 сценаріїв показано",
+        text:"Ви побачили як AI-агент повністю веде клієнтів без менеджера: підбір розміру, перевірка наявності, обмін, повернення, повторне замовлення.",
+        how:"<b>Наступні кроки:</b> підключити AI-агента до вашої реальної CRM і вивільнити час менеджерів для VIP-клієнтів та стратегічних задач.",
+        isFinish:true
+      });
+    }
     document.getElementById("btnPlay").textContent="✓ Готово";
     return;
   }
@@ -1081,6 +1189,8 @@ function resetPlayback(){
 }
 
 // ── Explanation modal ──
+let pendingNextScenario=null;
+let pendingIsFinish=false;
 function showExplanation(st){
   const o=document.getElementById("ovl");
   document.getElementById("mdIc").textContent=st.ic;
@@ -1090,15 +1200,62 @@ function showExplanation(st){
   const how=document.getElementById("mdHow");
   if(st.how){how.style.display="block";how.innerHTML=st.how}
   else{how.style.display="none"}
+  pendingNextScenario=(typeof st.nextScenario==="number")?st.nextScenario:null;
+  pendingIsFinish=!!st.isFinish;
+  // Update button labels
+  const cont=document.getElementById("mdCont");
+  const skip=document.getElementById("mdSkip");
+  if(pendingNextScenario!==null){
+    cont.textContent="▶ Наступний сценарій";
+    skip.textContent="Завершити";
+    skip.style.display="block";
+  }else if(pendingIsFinish){
+    cont.textContent="📊 Переглянути звіт за день";
+    skip.textContent="🔄 Спочатку";
+    skip.style.display="block";
+  }else{
+    cont.textContent="Продовжити ▶";
+    skip.textContent="Не показувати";
+    skip.style.display="block";
+  }
   o.classList.add("on");
 }
 document.getElementById("mdCont").onclick=()=>{
   document.getElementById("ovl").classList.remove("on");
+  if(pendingNextScenario!==null){
+    // Switch to next scenario and auto-play
+    S.scenarioIdx=pendingNextScenario;
+    document.getElementById("scenarioPick").value=String(pendingNextScenario);
+    pendingNextScenario=null;
+    resetPlayback();
+    playPlayback();
+    return;
+  }
+  if(pendingIsFinish){
+    // Open daily reports overlay
+    pendingIsFinish=false;
+    openReports();
+    return;
+  }
   playPlayback();
 };
 document.getElementById("mdSkip").onclick=()=>{
-  S.explSkipped=true;
   document.getElementById("ovl").classList.remove("on");
+  if(pendingNextScenario!==null){
+    // Just close — user wants to stop
+    pendingNextScenario=null;
+    return;
+  }
+  if(pendingIsFinish){
+    // Restart from first scenario
+    pendingIsFinish=false;
+    S.scenarioIdx=0;
+    document.getElementById("scenarioPick").value="0";
+    resetPlayback();
+    playPlayback();
+    return;
+  }
+  S.explSkipped=true;
   playPlayback();
 };
 
@@ -1125,6 +1282,64 @@ document.getElementById("scenarioPick").onchange=e=>{
 };
 document.getElementById("speedR").oninput=e=>{
   document.getElementById("speedV").textContent=parseFloat(e.target.value)+"×";
+};
+
+// ── Daily reports data + render ──
+const REPORT_DATA={
+  top:[
+    {name:"ULTERA SHAPE black",q:12,c:"#8b5cf6"},
+    {name:"ULTERA Aganta",q:9,c:"#8b5cf6"},
+    {name:"ULTERA Hunk Grey",q:7,c:"#a78bfa"},
+    {name:"ULTERA SHAPE beige",q:6,c:"#a78bfa"},
+    {name:"ULTERA Hunk3 Wine",q:4,c:"#c4b5fd"}
+  ],
+  faq:[
+    {name:"Чи є мій розмір?",p:34,c:"#10b981"},
+    {name:"Скільки коштує?",p:22,c:"#10b981"},
+    {name:"Як оплатити?",p:18,c:"#34d399"},
+    {name:"Коли доставка?",p:14,c:"#6ee7b7"},
+    {name:"Чи справжні?",p:12,c:"#6ee7b7"}
+  ],
+  ref:[
+    {name:"Дорого",p:31,c:"#ef4444"},
+    {name:"Немає розміру",p:25,c:"#f97316"},
+    {name:"Знайшов дешевше",p:18,c:"#f59e0b"},
+    {name:"Передумав",p:16,c:"#fbbf24"},
+    {name:"Не підходить колір",p:10,c:"#84cc16"}
+  ],
+  spark:[45,52,48,63,58,71,84]
+};
+function renderReports(){
+  // Top products
+  const topMax=Math.max(...REPORT_DATA.top.map(t=>t.q));
+  document.getElementById("repTop").innerHTML=REPORT_DATA.top.map(t=>
+    `<div class="bar-row"><span class="lbl">${t.name}</span><div class="bar"><div style="width:${(t.q/topMax)*100}%;background:${t.c}"></div></div><span class="val">${t.q} шт</span></div>`
+  ).join("");
+  // FAQ
+  document.getElementById("repFaq").innerHTML=REPORT_DATA.faq.map(f=>
+    `<div class="bar-row"><span class="lbl">${f.name}</span><div class="bar"><div style="width:${f.p*2.2}%;background:${f.c}"></div></div><span class="val">${f.p}%</span></div>`
+  ).join("");
+  // Refusal reasons
+  document.getElementById("repRef").innerHTML=REPORT_DATA.ref.map(r=>
+    `<div class="bar-row"><span class="lbl">${r.name}</span><div class="bar"><div style="width:${r.p*2.5}%;background:${r.c}"></div></div><span class="val">${r.p}%</span></div>`
+  ).join("");
+  // Sparkline
+  const sparkMax=Math.max(...REPORT_DATA.spark);
+  document.getElementById("repSpark").innerHTML=REPORT_DATA.spark.map(v=>
+    `<div class="b" style="height:${(v/sparkMax)*100}%"></div>`
+  ).join("");
+}
+function openReports(){
+  document.getElementById("repOvl").classList.add("on");
+  renderReports();
+}
+function closeReports(){
+  document.getElementById("repOvl").classList.remove("on");
+}
+document.getElementById("btnReports").onclick=openReports;
+document.getElementById("repClose").onclick=closeReports;
+document.getElementById("repOvl").onclick=e=>{
+  if(e.target.id==="repOvl")closeReports();
 };
 
 // ── Init ──
