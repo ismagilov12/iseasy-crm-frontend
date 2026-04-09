@@ -156,6 +156,16 @@ input,select,textarea{font:inherit}
 .oc-btn.ex{background:#f97316}
 .oc-btn.rep{background:#7c3aed}
 .rp-total{padding:8px 12px;background:var(--primaryLight);border-radius:10px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;color:var(--primary)}
+.pay-row{display:flex;align-items:center;gap:9px;padding:9px 11px;background:linear-gradient(135deg,#ecfdf5,#f0fdf4);border:1px solid #a7f3d0;border-radius:11px;margin-bottom:7px;font-size:12px;animation:slideInRight .35s ease}
+.pay-row .ic{width:30px;height:30px;border-radius:9px;background:#10b981;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.pay-row .mid{flex:1;min-width:0}
+.pay-row .mid .amt{font-weight:800;font-size:14px;color:#047857;line-height:1.15}
+.pay-row .mid .src{color:#065f46;font-size:10px;margin-top:1px;font-weight:600}
+.pay-row .mid .ts{color:#6ee7b7;font-size:9px;margin-top:1px}
+.pay-row .st{padding:3px 7px;border-radius:7px;font-size:9px;font-weight:800;background:#10b981;color:#fff;flex-shrink:0}
+.pay-empty{font-size:12px;color:var(--textSec);text-align:center;padding:6px 0}
+.rp-pay-total{margin-top:8px;padding:8px 12px;background:#d1fae5;border-radius:10px;font-size:12px;font-weight:700;display:flex;justify-content:space-between;color:#047857}
+@keyframes slideInRight{from{transform:translateX(14px);opacity:0}to{transform:translateX(0);opacity:1}}
 .tr-steps{display:flex;gap:3px;margin-top:10px}
 .tr-steps .step{flex:1;height:5px;background:var(--border);border-radius:3px;transition:.35s}
 .tr-steps .step.done{background:var(--accent)}
@@ -356,6 +366,11 @@ input,select,textarea{font:inherit}
         <div id="rpTotal" style="display:none"></div>
       </div>
       <div class="rp-section">
+        <div class="rp-title">💳 Платежі (<span id="rpPayCnt">0</span>) <span class="act">+ Додати</span></div>
+        <div id="rpPays"><div class="pay-empty">Платежів ще не було</div></div>
+        <div id="rpPayTotal" class="rp-pay-total" style="display:none"></div>
+      </div>
+      <div class="rp-section">
         <div class="rp-title">Доставка НП</div>
         <div id="rpDelivery" style="font-size:12px;color:var(--textSec);text-align:center;padding:6px 0">Немає активних відправлень</div>
       </div>
@@ -511,9 +526,17 @@ const SCENARIOS=[
     client:{name:"Анна Коваль",user:"anna_koval",ch:"instagram",color:"#f472b6",initial:"А",phone:"0501234567",city:"Київ",branch:"12"},
     fnl:"new",
     steps:[
-      {type:"expl",ic:"👟",tag:"Сценарій 1",title:"Підбір розміру — повністю без менеджера",text:"Клієнт не знає свій розмір. Бот збирає дані, видає розмірну таблицю і оформлює замовлення до 2000₴ передоплати — без участі менеджера.",how:"<b>Роль AI:</b> діалог як консультант, пропонує розмір. <b>Роль Автоматизації:</b> тригери після створення замовлення (дякую-повідомлення, оновлення статусу)."},
-      {type:"in",text:"Привіт! Дивилася ULTERA SHAPE чорні, хочу замовити але не знаю свій розмір 🙈"},
-      {type:"sys",src:"ai",ic:"🧠",text:"<b>AI-агент:</b> розпізнав запит на підбір розміру"},
+      {type:"expl",ic:"👟",tag:"Сценарій 1",title:"Підбір розміру — повністю без менеджера",text:"Клієнт не знає свій розмір. Бот розпізнає модель з фото, збирає дані, видає розмірну таблицю і оформлює замовлення до 2000₴ передоплати — без участі менеджера.",how:"<b>Роль AI:</b> діалог як консультант, розпізнає модель з фото (Vision API), пропонує розмір. <b>Роль Автоматизації:</b> тригери після створення замовлення."},
+      {type:"in",text:"Привіт! Бачила таку модель у сторіс — хочу замовити 🙈"},
+      {type:"in",photo:true,text:"📷 Фото моделі"},
+      {type:"sys",src:"ai",ic:"👁",text:"<b>AI-агент (Vision):</b> аналізує фото — шукає збіг у каталозі IS EASY"},
+      {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> розпізнано модель <b>ULTERA SHAPE black</b> (впевненість 96%)"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Привіт! 💜 Впізнала модель з фото — це **ULTERA SHAPE black** ✨"},
+      {type:"product",prodKey:"shape_black",size:38,via:"agent"},
+      {type:"out",via:"agent",text:"Підкажіть, будь ласка, свій розмір або довжину стопи по устілці в см — допоможу підібрати 📏"},
+      {type:"in",text:"Не знаю свій розмір 😅"},
+      {type:"sys",src:"ai",ic:"🧠",text:"<b>AI-агент:</b> переходить до підбору розміру за стопою"},
       {type:"typing"},
       {type:"out",via:"agent",text:"Привіт, Анно! 💜 Зараз допоможу. Підкажіть, будь ласка, довжину стопи по устілці в см?"},
       {type:"in",text:"24.5 см"},
@@ -539,7 +562,10 @@ const SCENARIOS=[
       {type:"in",photo:true,text:"Скрін оплати"},
       {type:"sys",src:"ai",ic:"🔍",text:"<b>AI-агент:</b> OCR скріна → Коваль А. · 1500₴ · 10:42"},
       {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> знайшов платіж у Monobank, звʼязав із замовленням #1042"},
-      {type:"fx",fx:[["order-update",0,{paid:1500,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}]]},
+      {type:"fx",fx:[
+        ["order-update",0,{paid:1500,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}],
+        ["pay-add",{amount:1500,source:"Monobank",last4:"4211",time:"10:42",orderId:1042,status:"ПІДТВЕРДЖЕНО"}]
+      ]},
       {type:"fnl",id:"confirmed"},
       {type:"typing"},
       {type:"out",via:"agent",text:"Платіж отримав ✅ 1500₴\n📦 Сьогодні створю ТТН і відправлю!"},
@@ -591,7 +617,10 @@ const SCENARIOS=[
       {type:"in",photo:true,text:"Ось"},
       {type:"sys",src:"ai",ic:"🔍",text:"<b>AI-агент:</b> OCR → Петренко М. · 1500₴ · 11:15"},
       {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> платіж знайдено у Monobank, звʼязав з #1043"},
-      {type:"fx",fx:[["order-update",0,{paid:1500,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}]]},
+      {type:"fx",fx:[
+        ["order-update",0,{paid:1500,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}],
+        ["pay-add",{amount:1500,source:"Monobank",last4:"8833",time:"11:15",orderId:1043,status:"ПІДТВЕРДЖЕНО"}]
+      ]},
       {type:"fnl",id:"confirmed"},
       {type:"out",via:"agent",text:"Отримав ✅ Зараз створю ТТН"},
       {type:"sys",src:"ai",ic:"📦",text:"<b>AI-агент:</b> створено ТТН 20450000123043"},
@@ -701,6 +730,7 @@ const SCENARIOS=[
       {type:"delay"},
       {type:"in",photo:true,text:"Оплачено"},
       {type:"sys",src:"ai",ic:"🔍",text:"<b>AI-агент:</b> OCR → Мельник Ю. · 1800₴ · 14:22"},
+      {type:"fx",fx:[["pay-add",{amount:1800,source:"Monobank",last4:"9155",time:"14:22",orderId:1045,status:"ПІДТВЕРДЖЕНО"}]]},
       {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> платіж у Monobank звʼязано із замовленням #1044"},
       {type:"fx",fx:[["order-update",0,{paid:1800,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}]]},
       {type:"fnl",id:"confirmed"},
@@ -901,8 +931,38 @@ function renderRightPanel(){
   document.getElementById("rpOrdCnt").textContent="0";
   document.getElementById("rpTotal").style.display="none";
   document.getElementById("rpDelivery").innerHTML="Немає активних відправлень";
+  document.getElementById("rpPays").innerHTML='<div class="pay-empty">Платежів ще не було</div>';
+  document.getElementById("rpPayCnt").textContent="0";
+  document.getElementById("rpPayTotal").style.display="none";
   S.orders=[];
+  S.payments=[];
   S.trackStep=0;
+}
+
+function addPayment(data){
+  if(!S.payments)S.payments=[];
+  S.payments.push(data);
+  const rp=document.getElementById("rpPays");
+  // Remove empty state
+  const empty=rp.querySelector(".pay-empty");
+  if(empty)empty.remove();
+  const el=document.createElement("div");
+  el.className="pay-row";
+  el.innerHTML=`
+    <div class="ic">💳</div>
+    <div class="mid">
+      <div class="amt">+${data.amount}₴</div>
+      <div class="src">${data.source||"Monobank"}${data.last4?" · ****"+data.last4:""}</div>
+      <div class="ts">${data.time||""} · #${data.orderId||"—"}</div>
+    </div>
+    <div class="st">${data.status||"OK"}</div>`;
+  rp.appendChild(el);
+  document.getElementById("rpPayCnt").textContent=S.payments.length;
+  // Update total
+  const sum=S.payments.reduce((a,p)=>a+(+p.amount||0),0);
+  const tot=document.getElementById("rpPayTotal");
+  tot.style.display="flex";
+  tot.innerHTML=`<span>Сплачено всього</span><span>${sum}₴</span>`;
 }
 
 function applyFx(fxList){
@@ -936,6 +996,9 @@ function applyFx(fxList){
     }
     else if(key==="track"){
       setTrackStep(fx[1]);
+    }
+    else if(key==="pay-add"){
+      addPayment(fx[1]);
     }
   });
 }
