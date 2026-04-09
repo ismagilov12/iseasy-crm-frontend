@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>IS EASY — AI-агент у реальному CRM</title>
+<style>
+/* ═══ DESIGN TOKENS (exactly matches IS EASY CRM) ═══ */
+:root{
+  --bg:#f0ede6; --surface:#fff; --surfaceAlt:#faf8f5; --surfaceHover:#f5f2ec;
+  --border:#eae7e0; --borderLight:#f0ede6;
+  --text:#1a1a2e; --textSec:#8a8578; --textMuted:#b0a99e;
+  --primary:#4f46e5; --primaryLight:#eef2ff; --primaryDark:#3730a3;
+  --accent:#10b981; --accentLight:#ecfdf5;
+  --danger:#ef4444; --dangerLight:#fef2f2;
+  --warn:#f59e0b; --warnLight:#fffbeb;
+  --bubbleOut:#4f46e5; --bubbleIn:#faf8f5;
+  --shadow:0 2px 12px rgba(0,0,0,.04); --shadowMd:0 4px 20px rgba(0,0,0,.08); --shadowLg:0 12px 40px rgba(0,0,0,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:-apple-system,'Inter','Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.45;overflow:hidden}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font:inherit}
+
+/* ═══ LAYOUT ═══ */
+.app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:17px}
+.logo-badge{font-size:9px;background:var(--primary);color:#fff;padding:2px 7px;border-radius:5px;font-weight:700}
+.tagline{font-size:11px;color:var(--textSec);padding:4px 10px;background:linear-gradient(135deg,#eef2ff,#fce7f3);border-radius:20px;font-weight:600;white-space:nowrap}
+.tagline b{color:var(--primary)}
+.controls{display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap}
+.ctrl-btn{padding:7px 14px;background:var(--primary);color:#fff;border-radius:10px;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(79,70,229,.25);transition:.15s}
+.ctrl-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(79,70,229,.35)}
+.ctrl-btn.sec{background:var(--surfaceAlt);color:var(--text);border:1px solid var(--border);box-shadow:none}
+.ctrl-btn.sec:hover{background:var(--surfaceHover)}
+.ctrl-btn.active{background:var(--accent);box-shadow:0 2px 8px rgba(16,185,129,.35)}
+.scenario-pick{padding:7px 10px;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;font-size:12px;font-weight:600;color:var(--text);outline:none;cursor:pointer;max-width:210px}
+.speed-wrap{display:flex;align-items:center;gap:6px;padding:0 4px}
+.speed-wrap input{width:74px;accent-color:var(--primary)}
+.speed-wrap b{font-size:11px;color:var(--primary);font-weight:700;min-width:30px}
+.progress{height:3px;background:var(--borderLight);position:relative;flex-shrink:0}
+.progress .bar{height:100%;background:linear-gradient(90deg,var(--primary),#8b5cf6);transition:width .3s}
+
+/* ═══ MAIN 3-COLUMN ═══ */
+.main{flex:1;display:flex;min-height:0;overflow:hidden}
+.col{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.col.left{width:320px;background:var(--surface);border-right:1px solid var(--border);flex-shrink:0}
+.col.center{flex:1;background:var(--surfaceAlt);min-width:0}
+.col.right{width:320px;background:var(--surfaceAlt);border-left:1px solid var(--border);flex-shrink:0;overflow-y:auto}
+
+/* ═══ LEFT: CHAT LIST ═══ */
+.channels{display:flex;border-bottom:1px solid var(--border);background:var(--surfaceAlt);flex-shrink:0}
+.channel{flex:1;padding:10px 4px;text-align:center;font-size:11px;font-weight:500;color:var(--textSec);border-bottom:2px solid transparent;cursor:pointer;transition:.15s;line-height:1.3}
+.channel.active{font-weight:700;color:var(--primary);border-bottom-color:var(--primary)}
+.channel .ic{display:block;font-size:14px;margin-bottom:2px}
+.search-wrap{padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.search-row{display:flex;gap:8px;margin-bottom:8px}
+.search-row input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:13px;outline:none;background:var(--surfaceAlt)}
+.refresh-btn{padding:8px 12px;background:var(--surfaceAlt);border:1px solid var(--border);border-radius:12px;font-size:13px}
+.filters{display:flex;gap:4px;flex-wrap:wrap}
+.f-pill{padding:4px 8px;border-radius:10px;font-size:10px;font-weight:600;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:3px}
+.f-pill.active{color:#fff !important}
+.chat-list{flex:1;overflow-y:auto}
+.chat-item{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;border-left:3px solid transparent;transition:.15s;position:relative}
+.chat-item:hover{background:var(--surfaceHover)}
+.chat-item.active{background:var(--primaryLight);border-left-color:var(--primary)}
+.chat-item.bot-active::after{content:"";position:absolute;right:10px;top:10px;width:6px;height:6px;background:var(--accent);border-radius:50%;box-shadow:0 0 0 3px rgba(16,185,129,.2);animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.av{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#fff;flex-shrink:0;position:relative;box-shadow:0 2px 6px rgba(0,0,0,.12);overflow:hidden}
+.av.lg{width:50px;height:50px;font-size:19px}
+.av.sm{width:36px;height:36px;font-size:15px}
+.av .checkmark{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;background:var(--accent);border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff;font-weight:900}
+.ci-body{flex:1;min-width:0}
+.ci-top{display:flex;justify-content:space-between;align-items:center}
+.ci-name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.ci-time{font-size:10px;color:var(--textSec);flex-shrink:0}
+.ci-bot{display:inline-block;font-size:9px;padding:1px 5px;background:#ecfdf5;color:#059669;border-radius:4px;font-weight:700;margin-left:4px}
+.ci-bot.busy{background:#fef3c7;color:#92400e;animation:pulse 1.5s ease-in-out infinite}
+.ci-last{display:flex;align-items:center;gap:4px;margin-top:2px}
+.ci-ch{font-size:9px;padding:1px 5px;border-radius:4px;background:var(--surfaceAlt);color:var(--textSec)}
+.ci-ch.tg{background:#e3f0ff;color:#2AABEE}
+.ci-ch.ig{background:#fce7f3;color:#e11d8c}
+.ci-ch.vb{background:#f3e8ff;color:#7c3aed}
+.ci-ch.st{background:#dbeafe;color:#2563eb}
+.ci-msg{font-size:11px;color:var(--textSec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.ci-badge{background:var(--danger);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 6px;flex-shrink:0}
+
+/* ═══ CENTER: CHAT AREA ═══ */
+.chat-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);flex-shrink:0}
+.ch-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px}
+.ch-sub{font-size:11px;color:var(--textSec)}
+.ch-ch-badge{font-size:9px;padding:2px 6px;border-radius:5px;background:#fce7f3;color:#e11d8c;font-weight:600}
+.funnel-pills{display:flex;gap:3px;align-items:center;flex-wrap:wrap}
+.fnl{padding:4px 10px;border-radius:8px;font-size:10px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
+.fnl.active{color:#fff}
+.chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:6px;background:linear-gradient(180deg,var(--surfaceAlt) 0%,#f5f2ec 100%)}
+.msg-row{display:flex;animation:fadeUp .35s ease}
+.msg-row.out{justify-content:flex-end}
+.msg-row.in{justify-content:flex-start}
+.msg-row.sys{justify-content:center;margin:4px 0}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.bubble{max-width:420px;padding:10px 14px;border-radius:18px 18px 18px 4px;background:var(--surface);color:var(--text);font-size:14px;line-height:1.45;word-break:break-word;box-shadow:var(--shadow);position:relative}
+.bubble.out{border-radius:18px 18px 4px 18px;background:var(--bubbleOut);color:#fff;box-shadow:0 2px 8px rgba(79,70,229,.3)}
+.bubble.img{padding:0;overflow:hidden;max-width:320px}
+.bubble.img img{width:100%;display:block}
+.bubble.img .cap{padding:8px 12px;background:var(--bubbleOut);color:#fff;font-size:13px}
+.bubble .time{font-size:10px;color:var(--textMuted);margin-top:4px;display:block}
+.bubble.out .time{color:rgba(255,255,255,.7)}
+.bubble .via{display:inline-flex;align-items:center;gap:3px;font-size:9px;padding:1px 6px;border-radius:6px;margin-top:6px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.via.agent{background:rgba(255,255,255,.25);color:#fff}
+.via.auto{background:rgba(245,158,11,.25);color:#fcd34d}
+.bubble:not(.out) .via.agent{background:#ede9fe;color:#6d28d9}
+.bubble:not(.out) .via.auto{background:#fef3c7;color:#92400e}
+.sys-log{max-width:520px;padding:7px 12px;background:rgba(255,255,255,.7);border:1px dashed var(--border);border-radius:12px;font-size:11px;color:var(--textSec);text-align:center;display:flex;align-items:center;gap:6px;justify-content:center;animation:fadeUp .3s ease}
+.sys-log .ic{font-size:13px}
+.sys-log.ai{border-color:#c7d2fe;background:#eef2ff;color:#4338ca}
+.sys-log.auto{border-color:#fed7aa;background:#fff7ed;color:#c2410c}
+.sys-log b{font-weight:700}
+.input-bar{padding:10px 14px;border-top:1px solid var(--border);background:var(--surface);display:flex;gap:8px;align-items:center;flex-shrink:0}
+.input-bar input{flex:1;padding:9px 14px;border:1px solid var(--border);border-radius:20px;font-size:13px;outline:none;background:var(--surfaceAlt)}
+.input-bar .send{padding:9px 16px;background:var(--primary);color:#fff;border-radius:20px;font-weight:700;font-size:13px}
+.typing-ind{display:inline-flex;gap:3px;padding:11px 16px;background:var(--surface);border-radius:18px 18px 18px 4px;box-shadow:var(--shadow)}
+.typing-ind span{width:6px;height:6px;border-radius:50%;background:var(--textMuted);animation:bounce 1.3s infinite}
+.typing-ind span:nth-child(2){animation-delay:.15s}
+.typing-ind span:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-6px);opacity:1}}
+
+/* ═══ RIGHT: CLIENT PANEL ═══ */
+.rp-section{padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface)}
+.rp-title{font-size:10px;font-weight:700;color:var(--textSec);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.rp-title .act{color:var(--primary);cursor:pointer;font-size:11px;text-transform:none;font-weight:600}
+.rp-client-row{display:flex;align-items:center;gap:12px}
+.rp-client-row .info{flex:1;min-width:0}
+.rp-client-row .info .nm{font-size:15px;font-weight:700}
+.rp-client-row .info .un{font-size:12px;color:var(--primary);font-weight:500}
+.rp-details{margin-top:12px;padding:12px 14px;background:var(--surfaceAlt);border-radius:12px;font-size:13px;display:grid;grid-template-columns:auto 1fr;gap:6px 12px}
+.rp-details .k{color:var(--textSec);font-weight:500}
+.rp-details .v{color:var(--text)}
+.rp-details .v.fill{animation:flashFill .8s ease}
+@keyframes flashFill{0%{background:rgba(79,70,229,.18);border-radius:6px;padding:0 4px;margin:0 -4px}100%{background:transparent}}
+.order-card{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px;animation:fadeUp .35s ease}
+.oc-row{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.oc-img{width:40px;height:40px;border-radius:10px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+.oc-img img{width:100%;height:100%;object-fit:cover}
+.oc-name{font-weight:600;font-size:13px;line-height:1.2}
+.oc-sku{color:var(--textSec);font-size:11px;margin-top:2px}
+.oc-sum{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.oc-price{font-weight:800;font-size:16px;color:var(--text)}
+.oc-status{padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700;border:1px solid transparent}
+.oc-meta{font-size:11px;color:var(--textSec);margin:2px 0}
+.oc-actions{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.oc-btn{padding:5px 10px;border-radius:8px;font-size:11px;font-weight:700;color:#fff}
+.oc-btn.ttn{background:#dc2626}
+.oc-btn.ex{background:#f97316}
+.oc-btn.rep{background:#7c3aed}
+.rp-total{padding:8px 12px;background:var(--primaryLight);border-radius:10px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;color:var(--primary)}
+.tr-steps{display:flex;gap:3px;margin-top:10px}
+.tr-steps .step{flex:1;height:5px;background:var(--border);border-radius:3px;transition:.35s}
+.tr-steps .step.done{background:var(--accent)}
+.tr-steps .step.active{background:linear-gradient(90deg,var(--accent),var(--primary));box-shadow:0 0 8px rgba(16,185,129,.4)}
+.tr-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--textSec);margin-top:4px}
+
+/* ═══ BOTTOM: MANAGER PANEL ═══ */
+.mgr{background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;max-height:44%;display:flex;flex-direction:column;transition:max-height .25s ease}
+.mgr.collapsed{max-height:48px}
+.mgr-head{padding:10px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--borderLight);flex-shrink:0;cursor:pointer}
+.mgr-title{font-weight:800;font-size:13px;display:flex;align-items:center;gap:8px}
+.mgr-title .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(16,185,129,.5);animation:pulse 1.6s ease-in-out infinite}
+.mgr-kpi{display:flex;gap:14px;margin-left:auto;font-size:11px}
+.mgr-kpi .k{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
+.mgr-kpi .k .v{font-weight:800;font-size:15px;color:var(--text)}
+.mgr-kpi .k .v.green{color:var(--accent)}
+.mgr-kpi .k .v.orange{color:var(--warn)}
+.mgr-kpi .k .v.purple{color:#8b5cf6}
+.mgr-kpi .k .l{color:var(--textSec);font-size:9px;text-transform:uppercase;letter-spacing:.3px}
+.mgr-collapse{padding:4px 10px;border-radius:8px;background:var(--surfaceAlt);border:1px solid var(--border);font-size:11px;font-weight:700;color:var(--textSec)}
+.mgr-body{flex:1;display:grid;grid-template-columns:1.4fr 1fr;gap:12px;padding:12px 18px;overflow:hidden;min-height:0}
+.mgr-col{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.mgr-col h4{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--textSec);letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.mgr-col h4 .cnt{background:var(--primary);color:#fff;padding:1px 7px;border-radius:10px;font-size:10px}
+.mgr-col h4 .cnt.warn{background:var(--warn)}
+.mgr-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
+.appr-card{background:var(--surfaceAlt);border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:10px;padding:9px 12px;display:flex;gap:10px;align-items:center;animation:fadeUp .3s ease}
+.appr-card .ic{font-size:18px;flex-shrink:0}
+.appr-card .txt{flex:1;min-width:0}
+.appr-card .txt .h{font-weight:700;font-size:12px}
+.appr-card .txt .s{font-size:10px;color:var(--textSec);margin-top:1px}
+.appr-card .acts{display:flex;gap:4px;flex-shrink:0}
+.appr-card .acts button{padding:5px 9px;border-radius:7px;font-size:10px;font-weight:700}
+.appr-card .acts .ok{background:var(--accent);color:#fff}
+.appr-card .acts .no{background:var(--dangerLight);color:var(--danger);border:1px solid #fecaca}
+.task-input{display:flex;gap:6px;margin-bottom:8px}
+.task-input input{flex:1;padding:7px 12px;border:1px solid var(--border);border-radius:10px;font-size:12px;outline:none;background:var(--surfaceAlt)}
+.task-input .add{padding:7px 12px;background:var(--primary);color:#fff;border-radius:10px;font-size:11px;font-weight:700}
+.task-card{background:var(--surfaceAlt);border:1px solid var(--border);border-radius:10px;padding:8px 12px;display:flex;gap:8px;align-items:center}
+.task-card .chk{width:16px;height:16px;border-radius:5px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.task-card .chk.done{background:var(--accent);border-color:var(--accent);color:#fff;font-size:11px;font-weight:900}
+.task-card .txt{flex:1;font-size:12px}
+.task-card .txt.done{text-decoration:line-through;color:var(--textMuted)}
+.task-card .owner{font-size:9px;padding:1px 6px;border-radius:4px;background:#ede9fe;color:#6d28d9;font-weight:700}
+.task-card .owner.me{background:#dbeafe;color:#1d4ed8}
+
+/* ═══ PAUSE EXPLANATION MODAL ═══ */
+.overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
+.overlay.on{display:flex;animation:fadeOv .2s ease}
+@keyframes fadeOv{from{opacity:0}to{opacity:1}}
+.modal{background:var(--surface);border-radius:20px;padding:26px;max-width:480px;width:100%;box-shadow:var(--shadowLg);animation:popIn .3s cubic-bezier(.18,.89,.32,1.28)}
+@keyframes popIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+.modal .ic{font-size:36px;margin-bottom:10px}
+.modal h3{font-size:19px;margin-bottom:6px;color:var(--text)}
+.modal .tag{display:inline-block;font-size:10px;padding:3px 10px;background:var(--primaryLight);color:var(--primary);border-radius:12px;font-weight:700;text-transform:uppercase;margin-bottom:12px}
+.modal p{font-size:13px;line-height:1.55;color:var(--textSec);margin-bottom:12px}
+.modal .how{background:var(--surfaceAlt);border-left:3px solid var(--primary);padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5;color:var(--text);margin-bottom:16px}
+.modal .how b{color:var(--primary)}
+.modal .row{display:flex;gap:8px}
+.modal button{flex:1;padding:11px;border-radius:12px;font-size:13px;font-weight:700}
+.modal .skip{background:var(--surfaceAlt);color:var(--textSec);border:1px solid var(--border)}
+.modal .cont{background:var(--primary);color:#fff}
+
+/* ═══ INTRO BANNER ═══ */
+.intro{position:absolute;top:60px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:10px 16px;box-shadow:var(--shadowMd);font-size:12px;color:var(--text);display:flex;align-items:center;gap:10px;z-index:50;animation:fadeUp .4s ease}
+.intro .b{font-weight:800;color:var(--primary)}
+.intro .close-x{padding:0 6px;color:var(--textMuted);cursor:pointer;font-size:18px}
+
+/* ═══ MOBILE ═══ */
+@media(max-width:960px){
+  .col.left{width:260px}
+  .col.right{width:270px}
+  .bubble{max-width:280px}
+  .mgr-body{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+  .topbar{padding:8px 12px;gap:6px}
+  .tagline{display:none}
+  .main{flex-direction:column}
+  .col.left,.col.right{width:100%;height:auto;border:none}
+  .col.left{max-height:40vh;border-bottom:1px solid var(--border)}
+  .col.right{max-height:38vh;border-top:1px solid var(--border)}
+  .mgr{max-height:50%}
+  .mgr-body{padding:10px 12px;gap:8px}
+  .modal{padding:20px}
+  .ctrl-btn{padding:6px 10px;font-size:11px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="logo">IS EASY <span class="logo-badge">CRM</span></div>
+    <div class="tagline">🤖 <b>1 менеджер = 5 менеджерів</b> · AI веде рутину, людина — рішення</div>
+    <div class="controls">
+      <select id="scenarioPick" class="scenario-pick">
+        <option value="0">1️⃣ Підбір розміру</option>
+        <option value="1">2️⃣ Перевірка наявності</option>
+        <option value="2">3️⃣ Обмін розміру</option>
+        <option value="3">4️⃣ Повернення</option>
+        <option value="4">5️⃣ Повторне замовлення</option>
+      </select>
+      <button class="ctrl-btn" id="btnPlay">▶ Старт</button>
+      <button class="ctrl-btn sec" id="btnStep" title="Наступний крок">⏭</button>
+      <button class="ctrl-btn sec" id="btnReset" title="Скинути">🔄</button>
+      <div class="speed-wrap">
+        <input type="range" id="speedR" min="0.5" max="10" step="0.5" value="4">
+        <b id="speedV">4×</b>
+      </div>
+      <button class="ctrl-btn sec" id="btnInfo" title="Пояснення">❓</button>
+    </div>
+  </div>
+  <div class="progress"><div class="bar" id="progBar" style="width:0%"></div></div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- LEFT: CHAT LIST -->
+    <div class="col left">
+      <div class="channels" id="channels"></div>
+      <div class="search-wrap">
+        <div class="search-row">
+          <input placeholder="Пошук..." readonly>
+          <button class="refresh-btn">🔄</button>
+        </div>
+        <div class="filters" id="filters"></div>
+      </div>
+      <div class="chat-list" id="chatList"></div>
+    </div>
+
+    <!-- CENTER: DIALOG -->
+    <div class="col center">
+      <div class="chat-header" id="chatHdr"></div>
+      <div class="chat-body" id="chatBody"></div>
+      <div class="input-bar">
+        <input placeholder="Напишіть повідомлення..." readonly>
+        <button class="send">↑</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: CLIENT PANEL -->
+    <div class="col right">
+      <div class="rp-section">
+        <div class="rp-title">Клієнт <span class="act">✎ Редагувати</span></div>
+        <div class="rp-client-row">
+          <div class="av lg" id="rpAv" style="background:linear-gradient(135deg,#c7d2fe,#a5b4fc)">?</div>
+          <div class="info">
+            <div class="nm" id="rpName">Оберіть чат</div>
+            <div class="un" id="rpUser"></div>
+          </div>
+        </div>
+        <div class="rp-details" id="rpDetails" style="display:none"></div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-title">Замовлення (<span id="rpOrdCnt">0</span>) <span class="act">+ Додати</span></div>
+        <div id="rpOrders"></div>
+        <div id="rpTotal" style="display:none"></div>
+      </div>
+      <div class="rp-section">
+        <div class="rp-title">Доставка НП</div>
+        <div id="rpDelivery" style="font-size:12px;color:var(--textSec);text-align:center;padding:6px 0">Немає активних відправлень</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM: MANAGER PANEL -->
+  <div class="mgr" id="mgrPanel">
+    <div class="mgr-head" id="mgrHead">
+      <div class="mgr-title"><span class="dot"></span>Панель менеджера</div>
+      <div class="mgr-kpi">
+        <div class="k"><div class="v" id="kpiTotal">14</div><div class="l">Чатів у роботі</div></div>
+        <div class="k"><div class="v green" id="kpiBot">12</div><div class="l">Веде бот</div></div>
+        <div class="k"><div class="v orange" id="kpiPend">3</div><div class="l">На підтвердження</div></div>
+        <div class="k"><div class="v purple" id="kpiTask">4</div><div class="l">Мої задачі</div></div>
+      </div>
+      <button class="mgr-collapse" id="mgrToggle">▼ Згорнути</button>
+    </div>
+    <div class="mgr-body">
+      <div class="mgr-col">
+        <h4>⏳ На підтвердження від бота <span class="cnt warn" id="apprCnt">3</span></h4>
+        <div class="mgr-list" id="apprList"></div>
+      </div>
+      <div class="mgr-col">
+        <h4>📝 Задачі <span class="cnt" id="taskCnt">4</span></h4>
+        <div class="task-input">
+          <input id="taskInput" placeholder="Додати задачу (Enter)...">
+          <button class="add" id="taskAdd">+ Бот</button>
+        </div>
+        <div class="mgr-list" id="taskList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAUSE / EXPLANATION MODAL -->
+<div class="overlay" id="ovl">
+  <div class="modal">
+    <div class="ic" id="mdIc">💡</div>
+    <div class="tag" id="mdTag">Пояснення</div>
+    <h3 id="mdTitle">Що відбувається</h3>
+    <p id="mdText"></p>
+    <div class="how" id="mdHow" style="display:none"></div>
+    <div class="row">
+      <button class="skip" id="mdSkip">Не показувати</button>
+      <button class="cont" id="mdCont">Продовжити ▶</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════ */
+/* ═══            DATA + SCENARIOS                 ═══ */
+/* ═══════════════════════════════════════════════════ */
+
+const CHANNELS=[
+  {id:"all",l:"Усі",ic:"💬"},
+  {id:"instagram",l:"Інста",ic:"📸"},
+  {id:"telegram",l:"TG",ic:"✈️"},
+  {id:"viber",l:"Viber",ic:"💜"},
+  {id:"site",l:"Сайт",ic:"🌐"}
+];
+
+const FNL=[
+  {id:"all",l:"Усі",ic:"",c:"#1a1a2e"},
+  {id:"unans",l:"❗",c:"#ef4444"},
+  {id:"new",l:"💬 Нові",c:"#3b82f6"},
+  {id:"processing",l:"📋 Оформл.",c:"#f59e0b"},
+  {id:"payment",l:"💳 Оплата",c:"#8b5cf6"},
+  {id:"confirmed",l:"✅ Офор.",c:"#10b981"},
+  {id:"shipped",l:"📦 Відпр.",c:"#06b6d4"},
+  {id:"received",l:"🎉 Отрим.",c:"#059669"},
+  {id:"exchange",l:"🔄 Обмін",c:"#f97316"}
+];
+
+/* Background chats (create feeling of many conversations) */
+const BG_CHATS=[
+  {id:"b1",name:"Іван Козак",user:"ivan_k",ch:"instagram",fnl:"new",last:"Вітаю, є 42?",time:"09:14",unread:2,botBusy:true,botLast:"🤖 Шукає модель"},
+  {id:"b2",name:"Катерина Л.",user:"kate_l",ch:"telegram",fnl:"processing",last:"Данілюк Катерина Київ 5",time:"09:20",unread:1,botBusy:true,botLast:"🤖 Парсить дані"},
+  {id:"b3",name:"Сергій Бондар",user:"serg.b",ch:"instagram",fnl:"payment",last:"Оплатив 1500",time:"09:22",unread:0,botBusy:true,botLast:"🤖 Перевіряє оплату"},
+  {id:"b4",name:"Марія Т.",user:"maria.t",ch:"viber",fnl:"confirmed",last:"Дякую!",time:"09:18",unread:0,botLast:"🤖 ТТН створено"},
+  {id:"b5",name:"Віталій Р.",user:"vitalii_r",ch:"telegram",fnl:"shipped",last:"ТТН: 20450000...",time:"09:05",unread:0,botLast:"🤖 Відправлено"},
+  {id:"b6",name:"Оксана Дорош",user:"oksana.d",ch:"instagram",fnl:"received",last:"Все класно!",time:"08:58",unread:0,botLast:"🤖 Попросив відгук"},
+  {id:"b7",name:"Петро Гнатюк",user:"p.gnatiuk",ch:"site",fnl:"new",last:"Чи є знижка?",time:"09:30",unread:1,botBusy:true,botLast:"🤖 Відповідає"},
+  {id:"b8",name:"Тетяна Мороз",user:"t.moroz",ch:"instagram",fnl:"payment",last:"Скрін оплати",time:"09:10",unread:0,botBusy:true,botLast:"🤖 Звіряє платіж"},
+  {id:"b9",name:"Андрій Левчук",user:"a_levchuk",ch:"telegram",fnl:"new",last:"Підкажіть розмір",time:"09:28",unread:2,botBusy:true,botLast:"🤖 Консультує"}
+];
+
+const PRODUCTS={
+  shape_black:{name:"ULTERA - SHAPE black suede",sku:"Ю20 чорний замш",price:2890,prepay:1500,img:"https://static.tildacdn.com/stor6437-3962-4537-b437-646631366564/5b7898a667624ac716da8f89baab9b9e.jpg",sizes:[36,37,38,39,40,41,42]},
+  shape_beige:{name:"ULTERA - SHAPE beige",sku:"Ю20 бежева замш",price:2890,prepay:1500,img:"https://static.tildacdn.com/stor3765-3866-4032-b430-393037343435/9a7081366437b732389541f4b62415d6.jpg",sizes:[36,37,38,39,40,41]},
+  shape_pist:{name:"ULTERA - SHAPE pistachio",sku:"Ю20 фісташка замш",price:2890,prepay:1500,img:"https://static.tildacdn.com/stor3739-6535-4439-a132-363434663465/4de8071c51f227c81fb6f374b3776a20.jpg",sizes:[36,37,38,39,40]},
+  aganta:{name:"ULTERA - Aganta",sku:"Ю10 бел/черн",price:3790,prepay:1800,img:"https://static.tildacdn.com/stor3430-3434-4439-b335-323536626565/79147790.png",sizes:[40,41,42,43,44,45]},
+  hunk_grey:{name:"ULTERA - Hunk Grey White",sku:"Ю1 С/Б кор",price:3590,prepay:1800,img:"https://static.tildacdn.com/stor3562-3337-4235-b561-376636343536/24273966.jpg",sizes:[39,40,41,42,43]}
+};
+
+/* ═══ SCENARIO DEFINITION ═══ */
+/* Each scenario = {client, channel, product, steps: [{type, ...}]} */
+/* Step types: in/out message, sys log, fx (dashboard effect), expl (explanation popup) */
+
+const SCENARIOS=[
+  /* ── 1. SIZE SELECTION ── */
+  {
+    title:"Підбір розміру",
+    client:{name:"Анна Коваль",user:"anna_koval",ch:"instagram",color:"#f472b6",initial:"А",phone:"0501234567",city:"Київ",branch:"12"},
+    fnl:"new",
+    steps:[
+      {type:"expl",ic:"👟",tag:"Сценарій 1",title:"Підбір розміру — повністю без менеджера",text:"Клієнт не знає свій розмір. Бот збирає дані, видає розмірну таблицю і оформлює замовлення до 2000₴ передоплати — без участі менеджера.",how:"<b>Роль AI:</b> діалог як консультант, пропонує розмір. <b>Роль Автоматизації:</b> тригери після створення замовлення (дякую-повідомлення, оновлення статусу)."},
+      {type:"in",text:"Привіт! Дивилася ULTERA SHAPE чорні, хочу замовити але не знаю свій розмір 🙈"},
+      {type:"sys",src:"ai",ic:"🧠",text:"<b>AI-агент:</b> розпізнав запит на підбір розміру"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Привіт, Анно! 💜 Зараз допоможу. Підкажіть, будь ласка, довжину стопи по устілці в см?"},
+      {type:"in",text:"24.5 см"},
+      {type:"sys",src:"ai",ic:"📏",text:"<b>AI-агент:</b> обрав розмір 38 за таблицею (24.5 см → 38)"},
+      {type:"fx",fx:[["__rp-show"],["rp-name","Анна Коваль"],["rp-user","@anna_koval"],["rp-av-bg","linear-gradient(135deg,#f472b6,#ec4899)"],["rp-av-text","А"]]},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Ваш розмір — **38**. Ось як визначив:\n\n📏 24.5 см стопа → розмір 38\n👟 ULTERA SHAPE — колодка трохи вужча, 38 підійде ідеально\n\nЗабронювати пару?"},
+      {type:"product",prodKey:"shape_black",size:38,via:"agent"},
+      {type:"sys",src:"ai",ic:"📦",text:"<b>AI-агент:</b> перевірив наявність SHAPE black 38 — є 3 пари"},
+      {type:"in",text:"Так, беру! Що по ціні?"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Повна ціна 2890₴\n💳 Передоплата: **1500₴**\n📦 Решта 1390₴ — на пошті\n\nНадішліть, будь ласка, ПІБ, місто і відділення НП 📝"},
+      {type:"in",text:"Коваль Анна, Київ, 12 відділення, 0501234567"},
+      {type:"sys",src:"ai",ic:"🎯",text:"<b>AI-агент:</b> розпізнав дані клієнта і заповнив картку"},
+      {type:"fx",fx:[["rp-details-show"],["d-phone","0501234567"],["d-city","Київ"],["d-branch","№12"],["d-ig","@anna_koval"]]},
+      {type:"fnl",id:"processing"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Чудово ✅ Дані прийняв. Передоплата 1500₴:\n\n💳 Monobank: 4441 1144 0000 0000\n💳 WayForPay: 4441 1144 0000 1111\n\nПісля оплати надішліть, будь ласка, скрін 📸"},
+      {type:"sys",src:"ai",ic:"🛒",text:"<b>AI-агент:</b> створив замовлення #1042"},
+      {type:"fx",fx:[["order-add",{prod:"shape_black",size:38,total:2890,paid:0,status:"payment",statusL:"На оплату",statusC:"#8b5cf6"}]]},
+      {type:"expl",ic:"💳",tag:"Без менеджера",title:"Передоплата до 2000₴ — AI сам перевіряє",text:"Коли передоплата ≤ 2000₴ і дані клієнта повні, AI сам звіряє платіж по ФІО/сумі/часу і переходить далі без менеджера.",how:"<b>Поріг 2000₴</b> налаштовується в CRM. <b>Вище порога</b> AI зупиняється і кидає картку в панель менеджера на підтвердження."},
+      {type:"delay"},
+      {type:"in",photo:true,text:"Скрін оплати"},
+      {type:"sys",src:"ai",ic:"🔍",text:"<b>AI-агент:</b> OCR скріна → Коваль А. · 1500₴ · 10:42"},
+      {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> знайшов платіж у Monobank, звʼязав із замовленням #1042"},
+      {type:"fx",fx:[["order-update",0,{paid:1500,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}]]},
+      {type:"fnl",id:"confirmed"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Платіж отримав ✅ 1500₴\n📦 Сьогодні створю ТТН і відправлю!"},
+      {type:"sys",src:"ai",ic:"📦",text:"<b>AI-агент:</b> створює ТТН через API Нової Пошти..."},
+      {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> ТТН 20450000123042 створено"},
+      {type:"fx",fx:[["order-update",0,{ttn:"20450000123042",status:"shipped",statusL:"Відправлено",statusC:"#06b6d4"}],["delivery-show","20450000123042",1]]},
+      {type:"fnl",id:"shipped"},
+      {type:"out",via:"agent",text:"📦 ТТН: **20450000123042**\nОчікувана доставка — завтра. Як отримаєте — напишу 😊"},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> статус ТТН → «у дорозі»"},
+      {type:"fx",fx:[["track",2]]},
+      {type:"out",via:"auto",text:"📮 Ваше замовлення вже в дорозі!\nТТН: 20450000123042"},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> посилка прибула на відділення"},
+      {type:"fx",fx:[["track",3]]},
+      {type:"out",via:"auto",text:"🎉 Посилка вже на відділенні №12! Чекаємо на вас 💜"},
+      {type:"in",text:"Забрала, дуже подобаються! 😍"},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> статус → Отримано, запуск сценарію «відгук»"},
+      {type:"fx",fx:[["track",4],["order-update",0,{status:"received",statusL:"Отримано",statusC:"#059669"}]]},
+      {type:"fnl",id:"received"},
+      {type:"out",via:"auto",text:"🌟 Дякуємо за покупку! Зробіть, будь ласка, фото-відгук — отримаєте -10% на наступну пару 🎁"},
+      {type:"sys",src:"ai",ic:"📊",text:"<b>Підсумок:</b> повний цикл без участі менеджера · тривалість 18 хв"},
+      {type:"expl",ic:"🏆",tag:"Результат",title:"0 хвилин менеджера",text:"Весь цикл від запитання до отримання посилки пройшов без менеджера. AI зробив підбір розміру, оформлення, перевірку оплати і ТТН. Автоматизації додали статусні повідомлення.",how:"<b>Якби менеджер робив вручну:</b> 12-15 хвилин активного часу. <b>З AI:</b> 0 хвилин — менеджер бачить лише підсумок у панелі."}
+    ]
+  },
+
+  /* ── 2. STOCK AVAILABILITY ── */
+  {
+    title:"Перевірка наявності",
+    client:{name:"Максим Петренко",user:"max.p",ch:"telegram",color:"#60a5fa",initial:"М",phone:"0931112233",city:"Львів",branch:"5"},
+    fnl:"new",
+    steps:[
+      {type:"expl",ic:"📦",tag:"Сценарій 2",title:"Наявність по моделі — AI шукає у каталозі",text:"Клієнт питає конкретну модель і розмір. Бот дивиться залишки в реальному часі й одразу пропонує купівлю.",how:"<b>Без AI</b> менеджер щоразу йде в каталог, шукає SKU, звіряє залишки. <b>AI</b> робить це за 1 секунду."},
+      {type:"in",text:"Вітаю! Є SHAPE бежева 40?"},
+      {type:"sys",src:"ai",ic:"🔎",text:"<b>AI-агент:</b> шукає «SHAPE бежева 40» у каталозі"},
+      {type:"fx",fx:[["__rp-show"],["rp-name","Максим Петренко"],["rp-user","@max.p"],["rp-av-bg","linear-gradient(135deg,#60a5fa,#3b82f6)"],["rp-av-text","М"]]},
+      {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> знайдено — ULTERA SHAPE beige · р.40 · 5 пар"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Вітаю! ✨ Так, є в наявності 5 пар!"},
+      {type:"product",prodKey:"shape_beige",size:40,via:"agent"},
+      {type:"out",via:"agent",text:"2890₴ · передоплата 1500₴, решта 1390₴ на пошті.\nЗамовляємо? 🛒"},
+      {type:"in",text:"Беру! Петренко Максим, Львів, 5 відділення, 0931112233"},
+      {type:"sys",src:"ai",ic:"🎯",text:"<b>AI-агент:</b> розпізнав дані і заповнив картку автоматично"},
+      {type:"fx",fx:[["rp-details-show"],["d-phone","0931112233"],["d-city","Львів"],["d-branch","№5"],["d-ig","@max.p"]]},
+      {type:"fnl",id:"processing"},
+      {type:"sys",src:"ai",ic:"🛒",text:"<b>AI-агент:</b> створив замовлення #1043 · SHAPE beige 40"},
+      {type:"fx",fx:[["order-add",{prod:"shape_beige",size:40,total:2890,paid:0,status:"payment",statusL:"На оплату",statusC:"#8b5cf6"}]]},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Прийняв! ✅\n💳 Передоплата 1500₴ — Monobank 4441 1144 0000 0000\nПісля оплати надішліть скрін 📸"},
+      {type:"delay"},
+      {type:"in",photo:true,text:"Ось"},
+      {type:"sys",src:"ai",ic:"🔍",text:"<b>AI-агент:</b> OCR → Петренко М. · 1500₴ · 11:15"},
+      {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> платіж знайдено у Monobank, звʼязав з #1043"},
+      {type:"fx",fx:[["order-update",0,{paid:1500,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}]]},
+      {type:"fnl",id:"confirmed"},
+      {type:"out",via:"agent",text:"Отримав ✅ Зараз створю ТТН"},
+      {type:"sys",src:"ai",ic:"📦",text:"<b>AI-агент:</b> створено ТТН 20450000123043"},
+      {type:"fx",fx:[["order-update",0,{ttn:"20450000123043",status:"shipped",statusL:"Відправлено",statusC:"#06b6d4"}],["delivery-show","20450000123043",1]]},
+      {type:"fnl",id:"shipped"},
+      {type:"out",via:"agent",text:"📦 ТТН: **20450000123043**\nВже завтра у Львові 💜"},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> ТТН → у дорозі"},
+      {type:"fx",fx:[["track",2]]},
+      {type:"out",via:"auto",text:"📮 Замовлення вже в дорозі! ТТН: 20450000123043"},
+      {type:"expl",ic:"⏱",tag:"Швидкість",title:"Від запиту до ТТН — 4 хвилини",text:"Раніше менеджер 4-5 хв шукав товар + 3 хв створював замовлення + 5 хв перевіряв оплату + 3 хв ТТН. Тепер це 0 хв менеджера.",how:"<b>Вивільнений час менеджера</b> йде на складні кейси: обміни, повернення, претензії, контент."}
+    ]
+  },
+
+  /* ── 3. EXCHANGE ── */
+  {
+    title:"Обмін розміру",
+    client:{name:"Олена Шевченко",user:"olena_sh",ch:"instagram",color:"#34d399",initial:"О",phone:"0672223344",city:"Одеса",branch:"8"},
+    fnl:"received",
+    prefilled:true,
+    steps:[
+      {type:"expl",ic:"🔄",tag:"Сценарій 3",title:"Обмін — AI сам оформлює нове ТТН",text:"Клієнтка отримала пару, виявилось малий розмір. Бот пояснює процедуру обміну, приймає повернення і відправляє нову пару — без менеджера.",how:"<b>Умова:</b> обмін у межах 14 днів, знижка/доплата ≤ 2000₴. <b>AI створює:</b> зворотне ТТН інструкцію, нове замовлення, новий ТТН."},
+      {type:"in",text:"Дівчата, вчора забрала SHAPE black 37 — малі 😭 Потрібен 38"},
+      {type:"sys",src:"ai",ic:"🧠",text:"<b>AI-агент:</b> розпізнав запит на обмін розміру (37→38)"},
+      {type:"fx",fx:[["__rp-show"],["rp-name","Олена Шевченко"],["rp-user","@olena_sh"],["rp-av-bg","linear-gradient(135deg,#34d399,#10b981)"],["rp-av-text","О"],["rp-details-show"],["d-phone","0672223344"],["d-city","Одеса"],["d-branch","№8"],["d-ig","@olena_sh"]]},
+      {type:"fx",fx:[["order-add",{prod:"shape_black",size:37,total:2890,paid:2890,status:"received",statusL:"Отримано",statusC:"#059669"}]]},
+      {type:"sys",src:"ai",ic:"📋",text:"<b>AI-агент:</b> знайшов замовлення #1038 у історії клієнта"},
+      {type:"sys",src:"ai",ic:"📦",text:"<b>AI-агент:</b> перевіряє наявність SHAPE black 38 — є 3 пари"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Олено, без паніки! 💜 Обмін в межах 14 днів — безкоштовно. Ось як діємо:\n\n1️⃣ Ви відправляєте нам пару НП (відправник оплачує)\n2️⃣ Як приїде — відразу шлю вам 38\n3️⃣ Оплата доставки у нас\n\nОформлюю обмін?"},
+      {type:"in",text:"Так! Куди надсилати?"},
+      {type:"sys",src:"ai",ic:"🔄",text:"<b>AI-агент:</b> створив картку обміну #EX-1038"},
+      {type:"fx",fx:[["order-update",0,{status:"exchange",statusL:"Обмін",statusC:"#f97316"}]]},
+      {type:"fnl",id:"exchange"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Відправте, будь ласка, на:\n\n📦 **Нова Пошта, Київ, відділення №1**\n👤 Отримувач: IS EASY (ФОП Ісмагілов Ю.)\n📱 0931111111\n\nПісля відправки — пришліть ТТН, я прикріплю до картки ✅"},
+      {type:"delay"},
+      {type:"in",text:"ТТН 20450099887766"},
+      {type:"sys",src:"ai",ic:"📎",text:"<b>AI-агент:</b> прикріпив ТТН повернення 20450099887766"},
+      {type:"out",via:"agent",text:"Прийняв ✅ Відстежую посилку. Як приїде — одразу відправлю вам 38!"},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> ТТН повернення → прибув на відділення"},
+      {type:"delay"},
+      {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> товар повернуто, створено нову відправку SHAPE black 38"},
+      {type:"fx",fx:[["order-update",0,{size:38,status:"shipped",statusL:"Відправлено",statusC:"#06b6d4",ttn:"20450000123088"}],["delivery-show","20450000123088",1]]},
+      {type:"fnl",id:"shipped"},
+      {type:"out",via:"agent",text:"📦 ТТН нової відправки: **20450000123088**\nРозмір 38 · завтра у вас! 💜"},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> ТТН → у дорозі"},
+      {type:"fx",fx:[["track",2]]},
+      {type:"out",via:"auto",text:"📮 Обмін у дорозі! ТТН: 20450000123088"},
+      {type:"expl",ic:"💰",tag:"Економія",title:"Обмін без менеджера = -100₴ собівартості",text:"Обмін раніше займав ~20 хв менеджера + переписка. Тепер AI робить це сам: створює зворотне ТТН, оформлює нове замовлення, випускає новий ТТН.",how:"<b>Менеджер бачить:</b> картку замовлення в статусі «Обмін» і підсумковий лог — нічого робити не треба."}
+    ]
+  },
+
+  /* ── 4. RETURN ── */
+  {
+    title:"Повернення",
+    client:{name:"Дмитро Литвин",user:"dima.l",ch:"telegram",color:"#a78bfa",initial:"Д",phone:"0969998877",city:"Харків",branch:"16"},
+    fnl:"received",
+    steps:[
+      {type:"expl",ic:"↩️",tag:"Сценарій 4",title:"Повернення — AI збирає причину і робить рефанд",text:"Клієнт хоче повернути пару. Бот проводить анкету (причина), пояснює умови й оформлює повернення — без менеджера (сума до 2000₴).",how:"<b>Що робить AI:</b> причина відмови → у Analytics (дашборд «Причини повернень»), створення повернення, інструкція."},
+      {type:"in",text:"Добрий день. Хотів би повернути замовлення, пара не підійшла за стилем"},
+      {type:"sys",src:"ai",ic:"🧠",text:"<b>AI-агент:</b> розпізнав запит на повернення"},
+      {type:"fx",fx:[["__rp-show"],["rp-name","Дмитро Литвин"],["rp-user","@dima.l"],["rp-av-bg","linear-gradient(135deg,#a78bfa,#8b5cf6)"],["rp-av-text","Д"],["rp-details-show"],["d-phone","0969998877"],["d-city","Харків"],["d-branch","№16"],["d-ig","@dima.l"],["order-add",{prod:"shape_pist",size:41,total:2890,paid:2890,status:"received",statusL:"Отримано",statusC:"#059669"}]]},
+      {type:"sys",src:"ai",ic:"📋",text:"<b>AI-агент:</b> знайшов замовлення #1039 · SHAPE pistachio 41 · 2890₴"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Дмитре, без проблем 💜 Повернення можливе протягом 14 днів за умови, що пара не носилася. Уточніть, будь ласка:\n\n1. Чи є пошкодження/сліди носіння?\n2. Яка основна причина? (розмір / стиль / колір / якість)"},
+      {type:"in",text:"Нові, носив тільки примірку вдома. Причина — в живу колір не сподобався, дуже яскравий"},
+      {type:"sys",src:"ai",ic:"📊",text:"<b>AI-агент:</b> зберіг причину «колір» у статистику повернень"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Дякую за чесну відповідь 🙏 Оформлюю повернення:\n\n1️⃣ Відправте пару НП на наш склад:\n   👤 IS EASY (ФОП Ісмагілов Ю.)\n   📦 Київ, відділення №1\n2️⃣ Як отримаємо — повернемо 2890₴ на картку протягом 1-2 дн\n3️⃣ Доставку повернення компенсуємо (до 100₴) разом з рефандом"},
+      {type:"in",text:"Зрозумів, надсилаю"},
+      {type:"fx",fx:[["order-update",0,{status:"refund",statusL:"Повернення",statusC:"#ef4444"}]]},
+      {type:"sys",src:"ai",ic:"🔄",text:"<b>AI-агент:</b> створив заявку на повернення #RF-1039"},
+      {type:"delay"},
+      {type:"in",text:"ТТН 20450055443322"},
+      {type:"sys",src:"ai",ic:"📎",text:"<b>AI-агент:</b> ТТН 20450055443322 прикріплено"},
+      {type:"out",via:"agent",text:"Прийнято ✅ Відстежую. Як приїде — повернемо кошти."},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> ТТН повернення → прибула"},
+      {type:"sys",src:"ai",ic:"💳",text:"<b>AI-агент:</b> ініціював рефанд 2990₴ (2890 товар + 100 доставка) на картку клієнта"},
+      {type:"fx",fx:[["order-update",0,{status:"archived",statusL:"Закрито",statusC:"#6b7280"}]]},
+      {type:"out",via:"agent",text:"💳 Рефанд 2990₴ відправлено на вашу картку. Протягом 1-2 днів буде на балансі. Дякуємо за покупку, ми працюємо над покращенням! 🙏"},
+      {type:"sys",src:"ai",ic:"📊",text:"<b>Аналітика:</b> причина «колір SHAPE pistachio» — 3-є повернення за місяць"},
+      {type:"expl",ic:"🎯",tag:"Дані для рішень",title:"AI дає сигнал продуктовій команді",text:"Коли одна й та сама причина повторюється — AI сигналізує: «SHAPE pistachio має високий % повернень через колір». Це кидає задачу менеджеру: переглянути фото товару або забрати модель з каталогу.",how:"<b>Задача автоматично потрапляє</b> у панель менеджера як підказка для рішень."}
+    ]
+  },
+
+  /* ── 5. REPEAT ORDER ── */
+  {
+    title:"Повторне замовлення",
+    client:{name:"Юлія Мельник",user:"yuliya_style",ch:"site",color:"#fbbf24",initial:"Ю",phone:"0661234567",city:"Львів",branch:"3"},
+    fnl:"new",
+    steps:[
+      {type:"expl",ic:"🔁",tag:"Сценарій 5",title:"Повторне замовлення — AI впізнає клієнта",text:"Юлія вже купувала раніше. Бот впізнає її по @username або телефону, пропонує стару адресу і оформлює нову пару за 2 повідомлення.",how:"<b>AI використовує:</b> історію замовлень з CRM, попередні дані для автозаповнення."},
+      {type:"in",text:"Вітаю ще раз 😊 Хочу другу пару — Aganta, р.42"},
+      {type:"sys",src:"ai",ic:"🧠",text:"<b>AI-агент:</b> впізнав клієнта @yuliya_style — 1 замовлення в історії"},
+      {type:"fx",fx:[["__rp-show"],["rp-name","Юлія Мельник"],["rp-user","@yuliya_style"],["rp-av-bg","linear-gradient(135deg,#fbbf24,#f59e0b)"],["rp-av-text","Ю"],["rp-details-show"],["d-phone","0661234567"],["d-city","Львів"],["d-branch","№3"],["d-ig","@yuliya_style"]]},
+      {type:"sys",src:"ai",ic:"📦",text:"<b>AI-агент:</b> знайдено ULTERA Aganta · р.42 · в наявності"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Юлечко, вітаю! 💜 Рада знову бачити!"},
+      {type:"product",prodKey:"aganta",size:42,via:"agent"},
+      {type:"out",via:"agent",text:"Є в наявності ✨\n💰 3790₴, передоплата 1800₴\n\nВідправляти на стару адресу? Львів, НП №3 📍"},
+      {type:"in",text:"Так, та сама адреса 💜"},
+      {type:"sys",src:"ai",ic:"🛒",text:"<b>AI-агент:</b> створив замовлення #1044 з автозаповненням даних"},
+      {type:"fx",fx:[["order-add",{prod:"aganta",size:42,total:3790,paid:0,status:"payment",statusL:"На оплату",statusC:"#8b5cf6"}]]},
+      {type:"fnl",id:"processing"},
+      {type:"typing"},
+      {type:"out",via:"agent",text:"Прийняла! ✅ Передоплата 1800₴:\n💳 Monobank 4441 1144 0000 0000\nСкрін після оплати, будь ласка 📸"},
+      {type:"delay"},
+      {type:"in",photo:true,text:"Оплачено"},
+      {type:"sys",src:"ai",ic:"🔍",text:"<b>AI-агент:</b> OCR → Мельник Ю. · 1800₴ · 14:22"},
+      {type:"sys",src:"ai",ic:"✅",text:"<b>AI-агент:</b> платіж у Monobank звʼязано із замовленням #1044"},
+      {type:"fx",fx:[["order-update",0,{paid:1800,status:"confirmed",statusL:"Оформлено",statusC:"#10b981"}]]},
+      {type:"fnl",id:"confirmed"},
+      {type:"out",via:"agent",text:"Готово ✅ Зараз зроблю ТТН"},
+      {type:"sys",src:"ai",ic:"📦",text:"<b>AI-агент:</b> створено ТТН 20450000123044"},
+      {type:"fx",fx:[["order-update",0,{ttn:"20450000123044",status:"shipped",statusL:"Відправлено",statusC:"#06b6d4"}],["delivery-show","20450000123044",1]]},
+      {type:"fnl",id:"shipped"},
+      {type:"out",via:"agent",text:"📦 ТТН: **20450000123044**\nУже завтра у Львові! 💜 Дякуємо, що знову з нами 🎁"},
+      {type:"sys",src:"auto",ic:"⚙️",text:"<b>Автоматизація:</b> постійний клієнт → +1 до лояльності"},
+      {type:"expl",ic:"📈",tag:"LTV",title:"Повторні продажі без зусиль",text:"AI сам розпізнає клієнта, використовує стару адресу, не питає тих самих даних. Повторне замовлення = 3 повідомлення клієнта і 0 хвилин менеджера.",how:"<b>Менеджер звільнений</b> для роботи з VIP-клієнтами і складних ситуацій."}
+    ]
+  }
+];
+
+/* Pending approval bot-actions (stay in manager panel) */
+const INITIAL_APPROVALS=[
+  {ic:"💰",h:"Повернення коштів 3450₴",s:"Замовлення #1012 · Сума > 2000₴ · потрібне підтвердження"},
+  {ic:"🎁",h:"Знижка -15% для @lena_kyiv",s:"AI рекомендує: 3-є замовлення за місяць"},
+  {ic:"🏭",h:"Замовлення у виробництво",s:"Hunk Grey 45 — немає в наявності, потрібне підтвердження"}
+];
+
+const INITIAL_TASKS=[
+  {t:"Додати нові літні моделі у каталог",owner:"me",done:false},
+  {t:"Передзвонити @maria_odessa (VIP)",owner:"me",done:false},
+  {t:"Зібрати відгуки за тиждень → Instagram",owner:"bot",done:false},
+  {t:"Оновити розмірну сітку на сайті",owner:"me",done:true}
+];
+
+/* ═══════════════════════════════════════════════════ */
+/* ═══               RENDER + STATE                ═══ */
+/* ═══════════════════════════════════════════════════ */
+
+const S={
+  scenarioIdx:0,
+  cursor:0,
+  playing:false,
+  timer:null,
+  explSkipped:false,
+  currentClient:null,
+  currentFnl:"new",
+  activeChannel:"all",
+  activeFilter:"all",
+  orders:[],
+  delivery:null,
+  trackStep:0
+};
+
+// ── CHANNELS ──
+const chEl=document.getElementById("channels");
+CHANNELS.forEach(ch=>{
+  const d=document.createElement("div");
+  d.className="channel"+(ch.id==="all"?" active":"");
+  d.innerHTML=`<span class="ic">${ch.ic}</span>${ch.l}`;
+  chEl.appendChild(d);
+});
+
+// ── FILTERS ──
+const flEl=document.getElementById("filters");
+FNL.forEach(f=>{
+  const d=document.createElement("div");
+  d.className="f-pill"+(f.id==="all"?" active":"");
+  const bg=f.id==="all"?f.c+"22":f.c+"14";
+  d.style.background=f.id==="all"?f.c:bg;
+  d.style.color=f.id==="all"?"#fff":f.c;
+  d.textContent=f.l+(f.id==="unans"?" 3":"");
+  flEl.appendChild(d);
+});
+
+// ── CHAT LIST: render background chats + current scenario on top ──
+function renderChatList(){
+  const list=document.getElementById("chatList");
+  list.innerHTML="";
+  const sc=SCENARIOS[S.scenarioIdx];
+  const cur={
+    id:"cur",
+    name:sc.client.name,
+    user:sc.client.user,
+    ch:sc.client.ch,
+    fnl:S.currentFnl,
+    last:getLastMsgPreview(),
+    time:"зараз",
+    unread:0,
+    botBusy:S.playing,
+    botLast:S.playing?"🤖 Веде діалог":"",
+    active:true,
+    color:sc.client.color,
+    initial:sc.client.initial
+  };
+  [cur,...BG_CHATS].forEach(c=>{
+    const d=document.createElement("div");
+    d.className="chat-item"+(c.active?" active":"")+(c.botBusy?" bot-active":"");
+    const chClass={instagram:"ig",telegram:"tg",viber:"vb",site:"st"}[c.ch]||"";
+    const chIc={instagram:"📸",telegram:"✈",viber:"💜",site:"🌐"}[c.ch]||"💬";
+    const av=c.color?`<div class="av" style="background:linear-gradient(135deg,${c.color},${c.color}cc)">${c.initial||c.name[0]}</div>`:
+      `<div class="av" style="background:linear-gradient(135deg,${pickColor(c.name)},${pickColor(c.name)}cc)">${(c.name||"?")[0]}</div>`;
+    d.innerHTML=`${av}
+      <div class="ci-body">
+        <div class="ci-top"><span class="ci-name">${c.name}${c.botBusy?'<span class="ci-bot busy">BOT</span>':c.botLast?'<span class="ci-bot">BOT</span>':''}</span><span class="ci-time">${c.time}</span></div>
+        <div class="ci-last"><span class="ci-ch ${chClass}">${chIc}</span><span class="ci-msg">${c.botLast||c.last}</span></div>
+      </div>
+      ${c.unread?`<div class="ci-badge">${c.unread}</div>`:""}`;
+    list.appendChild(d);
+  });
+}
+function pickColor(n){
+  const colors=["#f87171","#fb923c","#fbbf24","#34d399","#60a5fa","#a78bfa","#f472b6","#22d3ee"];
+  return colors[(n||"?").charCodeAt(0)%colors.length];
+}
+function getLastMsgPreview(){
+  const sc=SCENARIOS[S.scenarioIdx];
+  for(let i=Math.min(S.cursor-1,sc.steps.length-1);i>=0;i--){
+    const st=sc.steps[i];
+    if(st&&(st.type==="in"||st.type==="out"))return st.text.slice(0,42)+(st.text.length>42?"…":"");
+  }
+  return "Новий діалог";
+}
+
+// ── CHAT HEADER ──
+function renderChatHeader(){
+  const sc=SCENARIOS[S.scenarioIdx];
+  const hdr=document.getElementById("chatHdr");
+  const chIc={instagram:"IG",telegram:"TG",viber:"VB",site:"WEB"}[sc.client.ch]||"";
+  const chColor={instagram:"#e11d8c",telegram:"#2AABEE",viber:"#7c3aed",site:"#2563eb"}[sc.client.ch];
+  hdr.innerHTML=`
+    <div class="av" style="background:linear-gradient(135deg,${sc.client.color},${sc.client.color}cc)">${sc.client.initial}</div>
+    <div style="flex:1;min-width:0">
+      <div class="ch-name">${sc.client.name} <span class="ch-ch-badge" style="background:${chColor}18;color:${chColor}">${chIc}</span></div>
+      <div class="ch-sub">@${sc.client.user}</div>
+    </div>
+    <div class="funnel-pills" id="fnlPills"></div>`;
+  renderFnlPills();
+}
+function renderFnlPills(){
+  const el=document.getElementById("fnlPills");
+  if(!el)return;
+  const pills=FNL.filter(f=>f.id!=="all"&&f.id!=="unans");
+  el.innerHTML=pills.map(f=>{
+    const active=f.id===S.currentFnl;
+    return `<div class="fnl${active?" active":""}" style="background:${active?f.c:f.c+"14"};color:${active?"#fff":f.c}">${f.l}</div>`;
+  }).join("");
+}
+
+// ── CHAT BODY ──
+const chatBody=document.getElementById("chatBody");
+function clearChat(){chatBody.innerHTML="";}
+function addMsg(step){
+  const row=document.createElement("div");
+  if(step.type==="sys"){
+    row.className="msg-row sys";
+    const cls=step.src==="auto"?"auto":"ai";
+    row.innerHTML=`<div class="sys-log ${cls}"><span class="ic">${step.ic||"•"}</span>${step.text}</div>`;
+  }else if(step.type==="typing"){
+    row.className="msg-row in";
+    row.innerHTML=`<div class="typing-ind"><span></span><span></span><span></span></div>`;
+    row.id="typing-ind";
+  }else if(step.type==="product"){
+    const p=PRODUCTS[step.prodKey];
+    row.className="msg-row out";
+    const viaTag=step.via==="auto"?`<span class="via auto">⚙️ Автоматизація</span>`:`<span class="via agent">🤖 AI-агент</span>`;
+    row.innerHTML=`<div class="bubble out img">
+      <img src="${p.img}" alt="" onerror="this.style.display='none'">
+      <div class="cap"><b>${p.name}</b><br>${p.sku} · р.${step.size} · ${p.price}₴<br>${viaTag}</div>
+    </div>`;
+  }else{
+    // in or out
+    row.className="msg-row "+(step.type==="in"?"in":"out");
+    const cls=step.type==="out"?"bubble out":"bubble";
+    const time=new Date().toLocaleTimeString("uk",{hour:"2-digit",minute:"2-digit"});
+    const viaTag=step.type==="out"?(step.via==="auto"?`<span class="via auto">⚙️ Автоматизація</span>`:`<span class="via agent">🤖 AI-агент</span>`):"";
+    let html=step.text.replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/\n/g,"<br>");
+    if(step.photo)html="📸 "+html;
+    row.innerHTML=`<div class="${cls}">${html}<span class="time">${time}</span>${viaTag}</div>`;
+  }
+  chatBody.appendChild(row);
+  removeTyping(step.type);
+  chatBody.scrollTop=chatBody.scrollHeight;
+}
+function removeTyping(typeComing){
+  if(typeComing==="typing")return;
+  const t=document.getElementById("typing-ind");
+  if(t)t.remove();
+}
+
+// ── RIGHT PANEL ──
+function renderRightPanel(){
+  const sc=SCENARIOS[S.scenarioIdx];
+  document.getElementById("rpName").textContent=sc.client.name;
+  document.getElementById("rpUser").textContent="@"+sc.client.user;
+  const av=document.getElementById("rpAv");
+  av.textContent=sc.client.initial;
+  av.style.background=`linear-gradient(135deg,${sc.client.color},${sc.client.color}cc)`;
+  // Details hidden by default
+  const d=document.getElementById("rpDetails");
+  d.style.display="none";
+  d.innerHTML="";
+  // Reset orders
+  document.getElementById("rpOrders").innerHTML="";
+  document.getElementById("rpOrdCnt").textContent="0";
+  document.getElementById("rpTotal").style.display="none";
+  document.getElementById("rpDelivery").innerHTML="Немає активних відправлень";
+  S.orders=[];
+  S.trackStep=0;
+}
+
+function applyFx(fxList){
+  fxList.forEach(fx=>{
+    const key=fx[0];
+    if(key==="rp-name")document.getElementById("rpName").textContent=fx[1];
+    else if(key==="rp-user")document.getElementById("rpUser").textContent=fx[1];
+    else if(key==="rp-av-bg"){document.getElementById("rpAv").style.background=fx[1]}
+    else if(key==="rp-av-text"){document.getElementById("rpAv").textContent=fx[1]}
+    else if(key==="rp-details-show"){
+      const d=document.getElementById("rpDetails");
+      d.style.display="grid";
+      d.innerHTML=`
+        <span class="k">Тел</span><span class="v" id="d-phone">—</span>
+        <span class="k">Місто</span><span class="v" id="d-city">—</span>
+        <span class="k">Відд.</span><span class="v" id="d-branch">—</span>
+        <span class="k">IG</span><span class="v" id="d-ig">—</span>`;
+    }
+    else if(key==="d-phone"||key==="d-city"||key==="d-branch"||key==="d-ig"){
+      const el=document.getElementById(key);
+      if(el){el.textContent=fx[1];el.classList.add("fill");setTimeout(()=>el.classList.remove("fill"),800);}
+    }
+    else if(key==="order-add"){
+      addOrderCard(fx[1]);
+    }
+    else if(key==="order-update"){
+      updateOrderCard(fx[1],fx[2]);
+    }
+    else if(key==="delivery-show"){
+      showDelivery(fx[1],fx[2]);
+    }
+    else if(key==="track"){
+      setTrackStep(fx[1]);
+    }
+  });
+}
+
+function addOrderCard(data){
+  const idx=S.orders.length;
+  S.orders.push(data);
+  const p=PRODUCTS[data.prod];
+  const el=document.createElement("div");
+  el.className="order-card";
+  el.id="oc-"+idx;
+  el.innerHTML=`
+    <div class="oc-row">
+      <div class="oc-img"><img src="${p.img}" alt="" onerror="this.parentNode.innerHTML='👟'"></div>
+      <div style="flex:1;min-width:0">
+        <div class="oc-name">${p.name}</div>
+        <div class="oc-sku">${p.sku} · р.<span class="size">${data.size}</span></div>
+      </div>
+    </div>
+    <div class="oc-sum">
+      <span class="oc-price">${data.total}₴</span>
+      <span class="oc-status" style="background:${data.statusC}18;color:${data.statusC};border-color:${data.statusC}40">${data.statusL}</span>
+    </div>
+    <div class="oc-meta">Передопл.: <b class="paid">${data.paid}₴</b> / ${data.total}₴</div>
+    <div class="oc-meta ttn" style="${data.ttn?"":"display:none"}">ТТН: <b>${data.ttn||""}</b></div>
+    <div class="oc-actions">
+      <button class="oc-btn ttn" ${data.ttn?'style="display:none"':''}>📦 ТТН</button>
+      <button class="oc-btn ex">🔄 Обмін</button>
+      <button class="oc-btn rep">🔧 Ремонт</button>
+    </div>`;
+  document.getElementById("rpOrders").appendChild(el);
+  document.getElementById("rpOrdCnt").textContent=S.orders.length;
+  renderTotal();
+}
+function updateOrderCard(idx,patch){
+  Object.assign(S.orders[idx],patch);
+  const el=document.getElementById("oc-"+idx);
+  if(!el)return;
+  if(patch.statusL){
+    const st=el.querySelector(".oc-status");
+    st.textContent=patch.statusL;
+    st.style.background=patch.statusC+"18";
+    st.style.color=patch.statusC;
+    st.style.borderColor=patch.statusC+"40";
+  }
+  if(patch.paid!==undefined){
+    el.querySelector(".paid").textContent=patch.paid+"₴";
+  }
+  if(patch.ttn){
+    const t=el.querySelector(".ttn");
+    t.style.display="block";
+    t.innerHTML=`ТТН: <b>${patch.ttn}</b>`;
+  }
+  if(patch.size){
+    el.querySelector(".size").textContent=patch.size;
+  }
+}
+function renderTotal(){
+  const sum=S.orders.reduce((a,o)=>a+o.total,0);
+  const el=document.getElementById("rpTotal");
+  el.style.display="block";
+  el.className="rp-total";
+  el.innerHTML=`<span>${S.orders.length} товар(ів)</span><span>${sum}₴</span>`;
+  el.style.margin="10px 16px 0";
+}
+function showDelivery(ttn,step){
+  const el=document.getElementById("rpDelivery");
+  el.innerHTML=`
+    <div style="font-size:12px;margin-bottom:6px"><b>ТТН:</b> ${ttn}</div>
+    <div class="tr-steps" id="trSteps">
+      ${[1,2,3,4].map((_,i)=>`<div class="step${i<step?' done':i===step?' active':''}"></div>`).join("")}
+    </div>
+    <div class="tr-labels"><span>Створ.</span><span>У дорозі</span><span>Прибула</span><span>Отрим.</span></div>`;
+  el.style.textAlign="left";
+  el.style.padding="0";
+  S.trackStep=step;
+}
+function setTrackStep(step){
+  S.trackStep=step;
+  const el=document.getElementById("trSteps");
+  if(!el)return;
+  [...el.children].forEach((d,i)=>{
+    d.className="step"+(i<step?" done":i===step?" active":"");
+  });
+}
+
+// ── MANAGER PANEL ──
+function renderApprovals(){
+  const list=document.getElementById("apprList");
+  list.innerHTML="";
+  INITIAL_APPROVALS.forEach((a,i)=>{
+    const d=document.createElement("div");
+    d.className="appr-card";
+    d.innerHTML=`<div class="ic">${a.ic}</div>
+      <div class="txt"><div class="h">${a.h}</div><div class="s">${a.s}</div></div>
+      <div class="acts"><button class="ok" data-i="${i}">✓ ОК</button><button class="no" data-i="${i}">✕</button></div>`;
+    list.appendChild(d);
+  });
+  document.getElementById("apprCnt").textContent=INITIAL_APPROVALS.length;
+  document.getElementById("kpiPend").textContent=INITIAL_APPROVALS.length;
+  list.querySelectorAll("button").forEach(b=>{
+    b.onclick=e=>{
+      const card=e.target.closest(".appr-card");
+      card.style.transition=".25s";
+      card.style.opacity="0";
+      card.style.transform="translateX(40px)";
+      setTimeout(()=>{
+        const i=+e.target.dataset.i;
+        INITIAL_APPROVALS.splice(i,1);
+        renderApprovals();
+      },260);
+    };
+  });
+}
+function renderTasks(){
+  const list=document.getElementById("taskList");
+  list.innerHTML="";
+  INITIAL_TASKS.forEach((t,i)=>{
+    const d=document.createElement("div");
+    d.className="task-card";
+    d.innerHTML=`<div class="chk${t.done?" done":""}">${t.done?"✓":""}</div>
+      <div class="txt${t.done?" done":""}">${t.t}</div>
+      <span class="owner${t.owner==="me"?" me":""}">${t.owner==="me"?"👤 Я":"🤖 Бот"}</span>`;
+    list.appendChild(d);
+    d.querySelector(".chk").onclick=()=>{
+      t.done=!t.done;
+      renderTasks();
+    };
+  });
+  document.getElementById("taskCnt").textContent=INITIAL_TASKS.filter(t=>!t.done).length;
+  document.getElementById("kpiTask").textContent=INITIAL_TASKS.filter(t=>!t.done).length;
+}
+
+document.getElementById("taskAdd").onclick=()=>{
+  const i=document.getElementById("taskInput");
+  if(!i.value.trim())return;
+  INITIAL_TASKS.unshift({t:i.value.trim(),owner:"bot",done:false});
+  i.value="";
+  renderTasks();
+};
+document.getElementById("taskInput").onkeydown=e=>{
+  if(e.key==="Enter")document.getElementById("taskAdd").click();
+};
+
+// ── MANAGER COLLAPSE ──
+document.getElementById("mgrHead").onclick=()=>{
+  const p=document.getElementById("mgrPanel");
+  p.classList.toggle("collapsed");
+  document.getElementById("mgrToggle").textContent=p.classList.contains("collapsed")?"▲ Розгорнути":"▼ Згорнути";
+};
+
+// ═══════════════════════════════════════════════════
+// ═══             PLAYBACK ENGINE                  ═══
+// ═══════════════════════════════════════════════════
+
+function currentSteps(){return SCENARIOS[S.scenarioIdx].steps}
+
+function doStep(){
+  const steps=currentSteps();
+  if(S.cursor>=steps.length){
+    stopPlayback();
+    document.getElementById("btnPlay").textContent="✓ Готово";
+    return;
+  }
+  const st=steps[S.cursor];
+
+  if(st.type==="expl"&&!S.explSkipped){
+    pausePlayback();
+    showExplanation(st);
+    S.cursor++;
+    updateProgress();
+    return;
+  }
+  if(st.type==="expl"){
+    S.cursor++;
+    updateProgress();
+    doStep();
+    return;
+  }
+  if(st.type==="fx"){
+    applyFx(st.fx);
+  }else if(st.type==="fnl"){
+    S.currentFnl=st.id;
+    renderFnlPills();
+    renderChatList();
+  }else if(st.type==="delay"){
+    // just a pause
+  }else{
+    addMsg(st);
+    renderChatList();
+  }
+
+  S.cursor++;
+  updateProgress();
+  if(S.playing)S.timer=setTimeout(doStep,getDelay(st));
+}
+
+function getDelay(st){
+  const sp=Math.max(0.5,parseFloat(document.getElementById("speedR").value)||1);
+  const base={in:1200,out:1100,sys:550,typing:900,product:1300,fx:450,fnl:400,delay:1500}[st.type]||600;
+  return Math.round(base/sp);
+}
+
+function updateProgress(){
+  const total=currentSteps().length;
+  document.getElementById("progBar").style.width=Math.min(100,(S.cursor/total)*100)+"%";
+}
+
+function playPlayback(){
+  if(S.cursor>=currentSteps().length){resetPlayback();}
+  S.playing=true;
+  document.getElementById("btnPlay").textContent="⏸ Пауза";
+  doStep();
+}
+function pausePlayback(){
+  S.playing=false;
+  if(S.timer){clearTimeout(S.timer);S.timer=null}
+  document.getElementById("btnPlay").textContent="▶ Продовжити";
+}
+function stopPlayback(){S.playing=false;if(S.timer){clearTimeout(S.timer);S.timer=null}}
+
+function resetPlayback(){
+  stopPlayback();
+  S.cursor=0;
+  S.currentFnl=SCENARIOS[S.scenarioIdx].fnl||"new";
+  clearChat();
+  renderRightPanel();
+  renderChatHeader();
+  renderChatList();
+  updateProgress();
+  document.getElementById("btnPlay").textContent="▶ Старт";
+}
+
+// ── Explanation modal ──
+function showExplanation(st){
+  const o=document.getElementById("ovl");
+  document.getElementById("mdIc").textContent=st.ic;
+  document.getElementById("mdTag").textContent=st.tag;
+  document.getElementById("mdTitle").textContent=st.title;
+  document.getElementById("mdText").textContent=st.text;
+  const how=document.getElementById("mdHow");
+  if(st.how){how.style.display="block";how.innerHTML=st.how}
+  else{how.style.display="none"}
+  o.classList.add("on");
+}
+document.getElementById("mdCont").onclick=()=>{
+  document.getElementById("ovl").classList.remove("on");
+  playPlayback();
+};
+document.getElementById("mdSkip").onclick=()=>{
+  S.explSkipped=true;
+  document.getElementById("ovl").classList.remove("on");
+  playPlayback();
+};
+
+// ── Controls ──
+document.getElementById("btnPlay").onclick=()=>{
+  if(S.playing)pausePlayback();
+  else playPlayback();
+};
+document.getElementById("btnStep").onclick=()=>{
+  if(S.playing)pausePlayback();
+  doStep();
+};
+document.getElementById("btnReset").onclick=resetPlayback;
+document.getElementById("btnInfo").onclick=()=>{
+  showExplanation({
+    ic:"ℹ️",tag:"Про демо",title:"Як це працює",
+    text:"Це демо-версія IS EASY CRM з вбудованим AI-агентом. Зліва — список діалогів (показано, як 1 менеджер контролює 10+ чатів). По центру — активний діалог. Справа — картка клієнта з автозаповненням. Знизу — панель менеджера з підтвердженням дій бота і задачами.",
+    how:"<b>Оберіть сценарій</b> у випадаючому списку зверху, натисніть <b>▶ Старт</b>. Швидкість регулюється повзунком (0.5×-10×). Пояснення зʼявляються у ключові моменти."
+  });
+};
+document.getElementById("scenarioPick").onchange=e=>{
+  S.scenarioIdx=+e.target.value;
+  resetPlayback();
+};
+document.getElementById("speedR").oninput=e=>{
+  document.getElementById("speedV").textContent=parseFloat(e.target.value)+"×";
+};
+
+// ── Init ──
+renderRightPanel();
+renderChatHeader();
+renderChatList();
+renderApprovals();
+renderTasks();
+// Show intro explanation first
+setTimeout(()=>{
+  showExplanation({
+    ic:"👋",tag:"Демо IS EASY + AI",title:"1 менеджер = 5 менеджерів",
+    text:"Це справжній дизайн IS EASY CRM з вбудованим AI-агентом. Покажемо 5 сценаріїв: підбір розміру, наявність, обмін, повернення, повторне замовлення. Усі — з передоплатою до 2000₴, повністю без менеджера.",
+    how:"<b>Зліва</b> — як 1 менеджер бачить 10+ чатів, бот веде більшість. <b>Внизу</b> — панель менеджера: підтверджує складні дії бота + задачі."
+  });
+},600);
+</script>
+</body>
+</html>
