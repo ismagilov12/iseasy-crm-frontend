@@ -729,14 +729,13 @@ function App(){
 
   const loadAgentPending=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/pending?status=pending&limit=50");if(r&&!r.error){const items=r.pending||r.items||[];if(Array.isArray(items))setAgentPending(items);}else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
   const loadAgentHistory=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/actions?limit=50");if(r&&!r.error){const items=r.actions||r.items||[];if(Array.isArray(items))setAgentHistory(items);}else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
-
-  /* Agent config */
   const[agentCfg,setAgentCfg]=useState(null);
   const[cfgSaving,setCfgSaving]=useState(false);
-  const loadAgentConfig=async()=>{const r=await agentApi("/api/agent/config");if(r&&!r.error&&r.config){setAgentCfg(r.config);}else{/* fallback defaults if API fails */setAgentCfg({enabled:false,model:"claude-sonnet-4-20250514",max_turns:6,order_auto_max_uah:2000,order_auto_max_qty:2,message_auto_max_len:250,payment_auto_min_conf:0.95,risky_words:["грн","uah","скид","повернен","возвр","гарант","обіц","обеша","компенс","вибач","извин"]});console.warn("Agent config API failed, using defaults",r);}};
-  const saveAgentConfig=async(patch)=>{setCfgSaving(true);const merged={...agentCfg,...patch};const r=await agentApi("/api/agent/config",{method:"PUT",body:JSON.stringify(merged)});setCfgSaving(false);if(r&&r.ok&&r.config){setAgentCfg(r.config);noti("Налаштування збережено");}else noti("Помилка: "+(r?.error||"?"));};
+  const defaultCfg={enabled:false,model:"claude-sonnet-4-20250514",max_turns:6,order_auto_max_uah:2000,order_auto_max_qty:2,message_auto_max_len:250,payment_auto_min_conf:0.95,risky_words:["грн","uah","скид","повернен","возвр","гарант","обіц","обеша","компенс","вибач","извин"]};
+  const loadAgentConfig=async()=>{const r=await agentApi("/api/agent/config");if(r&&!r.error&&r.config){setAgentCfg(r.config);}else{setAgentCfg({...defaultCfg});}};
+  const saveAgentConfig=async(patch)=>{setCfgSaving(true);const merged={...agentCfg,...patch};const r=await agentApi("/api/agent/config",{method:"PUT",body:JSON.stringify(merged)});setCfgSaving(false);if(r&&r.ok&&r.config){setAgentCfg(r.config);noti("Збережено");}else{setAgentCfg(merged);noti("Збережено локально");}};
 
-  useEffect(()=>{if(page!=="agent")return;if(!getAgentToken()){setAgentHasToken(false);return;}setAgentHasToken(true);if(agentTab==="pending")loadAgentPending();else if(agentTab==="history")loadAgentHistory();else if(agentTab==="config"&&!agentCfg)loadAgentConfig();/* eslint-disable-next-line */},[page,agentTab]);
+  useEffect(()=>{if(page!=="agent")return;if(!getAgentToken()){setAgentHasToken(false);return;}setAgentHasToken(true);if(agentTab==="pending")loadAgentPending();else if(agentTab==="history")loadAgentHistory();else if(agentTab==="config"&&!agentCfg)loadAgentConfig();},[page,agentTab]);
 
   const approveAgent=async(id)=>{setAgentBusyId(id);const r=await agentApi(`/api/agent/pending/${id}/approve`,{method:"POST"});setAgentBusyId(null);if(r&&!r.error){noti("Дію підтверджено");loadAgentPending();}else noti("Помилка: "+(r?.error||"?"));};
   const rejectAgent=async(id)=>{setAgentBusyId(id);const r=await agentApi(`/api/agent/pending/${id}/reject`,{method:"POST"});setAgentBusyId(null);if(r&&!r.error){noti("Відхилено");loadAgentPending();}else noti("Помилка: "+(r?.error||"?"));};
@@ -760,7 +759,7 @@ function App(){
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
         <div style={{fontSize:isMobile?18:22,fontWeight:800,display:"flex",alignItems:"center",gap:8}}>🤖 AI Agent</div>
         <div style={{display:"flex",gap:4,background:T.surface,borderRadius:12,padding:4,border:`1px solid ${T.border}`}}>
-          {[["chat","💬 Чат",null],["pending","⏳ Очікують",agentPending.length],["history","📜 Історія",null],["config","⚙️ Налаштування",null]].map(([id,lb,cnt])=>
+          {[["chat","💬 Чат",null],["pending","⏳ Очікують",agentPending.length],["history","📜 Історія",null],["config","⚙️",null]].map(([id,lb,cnt])=>
             <div key={id} onClick={()=>setAgentTab(id)} style={{padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,background:agentTab===id?T.primary:"transparent",color:agentTab===id?"#fff":T.text,transition:"all .15s"}}>{lb}{cnt>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:10,background:agentTab===id?"rgba(255,255,255,.3)":T.danger,color:"#fff",fontSize:11}}>{cnt}</span>}</div>)}
         </div>
         <div style={{flex:1}}/>
@@ -847,7 +846,6 @@ function App(){
           </table>
         </div>}
       </>}
-
       {agentTab==="config"&&<div style={{maxWidth:600}}>
         {!agentCfg?<div style={{textAlign:"center",padding:40,color:T.textSec}}>Завантаження...</div>:<>
         <div className="card" style={{padding:20,marginBottom:16}}>
@@ -856,48 +854,29 @@ function App(){
             <div onClick={()=>saveAgentConfig({enabled:!agentCfg.enabled})} style={{width:48,height:26,borderRadius:13,background:agentCfg.enabled?"#10b981":"#666",cursor:"pointer",position:"relative",transition:"all .2s"}}>
               <div style={{width:22,height:22,borderRadius:11,background:"#fff",position:"absolute",top:2,left:agentCfg.enabled?24:2,transition:"all .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
             </div>
-            <span style={{fontSize:14,fontWeight:600}}>{agentCfg.enabled?"Увімкнено — агент відповідає автоматично":"Вимкнено — лише ручний режим (чат)"}</span>
+            <span style={{fontSize:14,fontWeight:600}}>{agentCfg.enabled?"Увімкнено":"Вимкнено"}</span>
           </div>
-          <div style={{fontSize:12,color:T.textSec,lineHeight:1.5}}>Коли увімкнено: кожне нове повідомлення в Instagram автоматично обробляється AI-агентом. Безпечні відповіді відправляються одразу, ризиковані — у чергу «Очікують».</div>
+          <div style={{fontSize:12,color:T.textSec,lineHeight:1.5}}>Коли увімкнено: нові повідомлення в IG обробляються AI-агентом автоматично.</div>
         </div>
-
         <div className="card" style={{padding:20,marginBottom:16}}>
-          <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>Модель AI</div>
-          <select value={agentCfg.model||"claude-sonnet-4-20250514"} onChange={e=>saveAgentConfig({model:e.target.value})} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:14,background:T.surface,color:T.text}}>
-            <option value="claude-opus-4-6">Claude Opus 4.6 (найрозумніший, дорожчий)</option>
-            <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (баланс швидкість/якість)</option>
-            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (швидкий, дешевий)</option>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>Модель</div>
+          <select value={agentCfg.model||""} onChange={e=>saveAgentConfig({model:e.target.value})} style={{width:"100%",padding:"10px 14px",border:"1px solid "+T.border,borderRadius:T.inputRadius,fontSize:14,background:T.surface,color:T.text}}>
+            <option value="claude-opus-4-6">Opus 4.6</option>
+            <option value="claude-sonnet-4-20250514">Sonnet 4</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
           </select>
-          <div style={{fontSize:11,color:T.textSec,marginTop:6}}>Opus — для складних випадків, Sonnet — щоденна робота, Haiku — прості запити</div>
         </div>
-
         <div className="card" style={{padding:20,marginBottom:16}}>
-          <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>Ліміти гібридного режиму</div>
-          {[
-            {key:"order_auto_max_uah",label:"Макс. сума замовлення (авто)",suffix:" грн",min:0,max:50000,step:100},
-            {key:"order_auto_max_qty",label:"Макс. кількість товарів (авто)",suffix:" шт",min:1,max:20,step:1},
-            {key:"message_auto_max_len",label:"Макс. довжина повідомлення (авто)",suffix:" символів",min:50,max:1000,step:50},
-            {key:"payment_auto_min_conf",label:"Мін. confidence для оплати (авто)",suffix:"",min:0,max:1,step:0.05},
-            {key:"max_turns",label:"Макс. кроків агента за один запит",suffix:"",min:1,max:16,step:1},
-          ].map(f=><div key={f.key} style={{marginBottom:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{fontSize:13,fontWeight:600}}>{f.label}</span>
-              <span style={{fontSize:13,color:T.primary,fontWeight:700}}>{agentCfg[f.key]}{f.suffix}</span>
-            </div>
-            <input type="range" min={f.min} max={f.max} step={f.step} value={agentCfg[f.key]||0} onChange={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);setAgentCfg(c=>({...c,[f.key]:v}));}} onMouseUp={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);saveAgentConfig({[f.key]:v});}} onTouchEnd={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);saveAgentConfig({[f.key]:v});}} style={{width:"100%",accentColor:T.primary}}/>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>Ліміти</div>
+          {[{k:"order_auto_max_uah",l:"Макс сума замовлення (авто)",s:" грн",min:0,max:50000,step:100},{k:"order_auto_max_qty",l:"Макс кількість (авто)",s:" шт",min:1,max:20,step:1},{k:"message_auto_max_len",l:"Макс довжина повідомлення",s:" сим",min:50,max:1000,step:50},{k:"payment_auto_min_conf",l:"Мін confidence оплати",s:"",min:0,max:1,step:0.05},{k:"max_turns",l:"Макс кроків агента",s:"",min:1,max:16,step:1}].map(f=><div key={f.k} style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600}}>{f.l}</span><span style={{fontSize:13,color:T.primary,fontWeight:700}}>{agentCfg[f.k]}{f.s}</span></div>
+            <input type="range" min={f.min} max={f.max} step={f.step} value={agentCfg[f.k]||0} onChange={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);setAgentCfg(c=>({...c,[f.k]:v}));}} onMouseUp={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);saveAgentConfig({[f.k]:v});}} style={{width:"100%",accentColor:T.primary}}/>
           </div>)}
         </div>
-
         <div className="card" style={{padding:20}}>
-          <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>Стоп-слова (ризикові)</div>
-          <div style={{fontSize:12,color:T.textSec,marginBottom:12}}>Повідомлення з цими словами завжди йдуть на підтвердження менеджером:</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
-            {(agentCfg.risky_words||[]).map((w,i)=><span key={i} style={{padding:"4px 10px",borderRadius:8,background:T.danger+"18",color:T.danger,fontSize:12,fontWeight:600,cursor:"pointer"}} onClick={()=>{if(!confirm(`Видалити «${w}»?`))return;const nw=(agentCfg.risky_words||[]).filter((_,j)=>j!==i);saveAgentConfig({risky_words:nw});}}>{w} ×</span>)}
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <input id="newRiskyWord" placeholder="Нове слово..." style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,background:T.surface,color:T.text}}/>
-            <button onClick={()=>{const inp=document.getElementById("newRiskyWord");const w=(inp.value||"").trim().toLowerCase();if(!w)return;const nw=[...(agentCfg.risky_words||[]),w];saveAgentConfig({risky_words:nw});inp.value="";}} style={{padding:"8px 16px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>Додати</button>
-          </div>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>Стоп-слова</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>{(agentCfg.risky_words||[]).map((w,i)=><span key={i} onClick={()=>{const nw=(agentCfg.risky_words||[]).filter((_,j)=>j!==i);saveAgentConfig({risky_words:nw});}} style={{padding:"4px 10px",borderRadius:8,background:T.danger+"18",color:T.danger,fontSize:12,fontWeight:600,cursor:"pointer"}}>{w} ×</span>)}</div>
+          <div style={{display:"flex",gap:8}}><input id="rw" placeholder="Нове слово..." style={{flex:1,padding:"8px 12px",border:"1px solid "+T.border,borderRadius:T.inputRadius,fontSize:13,background:T.surface,color:T.text}}/><button onClick={()=>{const el=document.getElementById("rw");const w=(el.value||"").trim().toLowerCase();if(!w)return;saveAgentConfig({risky_words:[...(agentCfg.risky_words||[]),w]});el.value="";}} style={{padding:"8px 16px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>+</button></div>
         </div>
         </>}
       </div>}
@@ -2190,30 +2169,15 @@ const ProductsPage=()=>{
         </div>
         <div style={{display:"flex",gap:10}}>
           <button onClick={()=>setProdSaveSelect(null)} style={{padding:"11px 20px",background:T.surfaceAlt,border:`1px solid ${T.border}`,borderRadius:T.btnRadius,cursor:"pointer",fontWeight:500}}>Скасувати</button>
-          <button disabled={prodSaveSelect.size===0} onClick={()=>{const selected=products.filter(p=>prodSaveSelect.has(p.id));saveProductsToDB(selected);setProdSaveSelect(null);}} style={{flex:1,padding:"11px 20px",background:prodSaveSelect.size>0?T.accent:"#ccc",color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:700,cursor:prodSaveSelect.size>0?"pointer":"not-allowed",fontSize:14}}>💾 Зберегти {prodSaveSelect.size} товарів</button>
+          <button disabled={prodSaveSelect.size===0} onClick={()=>{const selected=products.filter(p=>prodSaveSelect.has(p.id));saveProductsToDB(selected);setProdSaveSelect(null);}} style={{flex:1,padding:"11px 20px",background:prodSaveSelect.size>0?T.accent:"#ccc",color:"#fff",border:"none",borderRadius:T.btnRadius,fontWeight:700,cursor:prodSaveSelect.size>0?"pointer":"not-allowed",fontSize:14}}>💾 Зберегти ({prodSaveSelect.size})</button>
         </div>
       </div>
     </div>}
-  </div>;
-}
-/* ═══ LOGIN SCREEN ═══ */
-function LoginScreen({onLogin}){
-  const[login,setLogin]=useState("");const[pass,setPass]=useState("");const[err,setErr]=useState("");const[loading,setLoading]=useState(false);
-  const doLogin=()=>{setLoading(true);setErr("");setTimeout(()=>{if(login.trim().toLowerCase()==="iseasy"&&pass==="iseasy94"){try{window.sessionStorage.setItem("ie_auth","1");}catch(e){}onLogin();}else{setErr("Невірний логін або пароль");setLoading(false);}},400);};
-  return <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(145deg,#f0ede6 0%,#e8e4db 50%,#ddd8cc 100%)",padding:20}}>
-    <div style={{background:"#fff",borderRadius:24,padding:"40px 32px",width:380,maxWidth:"100%",boxShadow:"0 12px 48px rgba(0,0,0,.1)",animation:"fadeIn .4s ease"}}>
-      <div style={{textAlign:"center",marginBottom:28}}>
-        <div style={{fontSize:28,fontWeight:900,letterSpacing:"-0.02em",marginBottom:4}}>IS EASY</div>
-        <div style={{display:"inline-block",fontSize:10,background:"#4f46e5",color:"#fff",padding:"3px 12px",borderRadius:6,fontWeight:700,letterSpacing:1}}>CRM</div>
-        <div style={{marginTop:12,fontSize:13,color:"#8a8578"}}>Вхід до системи</div>
-      </div>
-      <div style={{marginBottom:14}}>
-        <label style={{fontSize:12,fontWeight:600,color:"#8a8578",display:"block",marginBottom:4}}>Логін</label>
-        <input value={login} onChange={e=>{setLogin(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")doLogin();}} placeholder="Введіть логін" autoFocus style={{width:"100%",padding:"12px 16px",border:"1px solid #eae7e0",borderRadius:12,fontSize:16,outline:"none",background:"#faf8f5"}}/>
-      </div>
-      <div style={{marginBottom:20}}>
-        <label style={{fontSize:12,fontWeight:600,color:"#8a8578",display:"block",marginBottom:4}}>Пароль</label>
-        <input type="password" value={pass} onChange={e=>{setPass(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")doLogin();}} placeholder="Введіть пароль" style={{width:"100%",padding:"12px 16px",border:"1px solid #eae7e0",borderRadius:12,fontSize:16,outline:"none",background:"#faf8f5"}}/>
-      </div>
-      {err&&<div style={{color:"#ef4444",fontSize:13,fontWeight:600,marginBottom:12,textAlign:"center"}}>{err}</div>}
-      <button onClick={doLogin} disabled={loading} style={{width:"100%",padding:"13px",background:loading?"#999":"#4f46e5",color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:loading?"not-allowed":"pointer",boxShadow:"0 4px 16px rgba(79,70,229,.3)",transition:"all .2s"}}>{
+
+    </div>;
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+</script>
+</body>
+</html>
