@@ -727,10 +727,16 @@ function App(){
     setTimeout(()=>{if(chatScrollRef.current)chatScrollRef.current.scrollTop=chatScrollRef.current.scrollHeight;},50);
   };
 
-  const loadAgentPending=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/pending?status=pending&limit=50");if(r&&!r.error&&Array.isArray(r.items))setAgentPending(r.items);else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
-  const loadAgentHistory=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/actions?limit=50");if(r&&!r.error&&Array.isArray(r.items))setAgentHistory(r.items);else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
+  const loadAgentPending=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/pending?status=pending&limit=50");if(r&&!r.error){const items=r.pending||r.items||[];if(Array.isArray(items))setAgentPending(items);}else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
+  const loadAgentHistory=async()=>{setAgentLoading(true);const r=await agentApi("/api/agent/actions?limit=50");if(r&&!r.error){const items=r.actions||r.items||[];if(Array.isArray(items))setAgentHistory(items);}else if(r&&r.error==="no_token")setAgentHasToken(false);setAgentLoading(false);};
 
-  useEffect(()=>{if(page!=="agent")return;if(!getAgentToken()){setAgentHasToken(false);return;}setAgentHasToken(true);if(agentTab==="pending")loadAgentPending();else if(agentTab==="history")loadAgentHistory();/* eslint-disable-next-line */},[page,agentTab]);
+  /* Agent config */
+  const[agentCfg,setAgentCfg]=useState(null);
+  const[cfgSaving,setCfgSaving]=useState(false);
+  const loadAgentConfig=async()=>{const r=await agentApi("/api/agent/config");if(r&&!r.error&&r.config)setAgentCfg(r.config);};
+  const saveAgentConfig=async(patch)=>{setCfgSaving(true);const merged={...agentCfg,...patch};const r=await agentApi("/api/agent/config",{method:"PUT",body:JSON.stringify(merged)});setCfgSaving(false);if(r&&r.ok&&r.config){setAgentCfg(r.config);noti("Налаштування збережено");}else noti("Помилка: "+(r?.error||"?"));};
+
+  useEffect(()=>{if(page!=="agent")return;if(!getAgentToken()){setAgentHasToken(false);return;}setAgentHasToken(true);if(agentTab==="pending")loadAgentPending();else if(agentTab==="history")loadAgentHistory();else if(agentTab==="config"&&!agentCfg)loadAgentConfig();/* eslint-disable-next-line */},[page,agentTab]);
 
   const approveAgent=async(id)=>{setAgentBusyId(id);const r=await agentApi(`/api/agent/pending/${id}/approve`,{method:"POST"});setAgentBusyId(null);if(r&&!r.error){noti("Дію підтверджено");loadAgentPending();}else noti("Помилка: "+(r?.error||"?"));};
   const rejectAgent=async(id)=>{setAgentBusyId(id);const r=await agentApi(`/api/agent/pending/${id}/reject`,{method:"POST"});setAgentBusyId(null);if(r&&!r.error){noti("Відхилено");loadAgentPending();}else noti("Помилка: "+(r?.error||"?"));};
@@ -754,7 +760,7 @@ function App(){
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
         <div style={{fontSize:isMobile?18:22,fontWeight:800,display:"flex",alignItems:"center",gap:8}}>🤖 AI Agent</div>
         <div style={{display:"flex",gap:4,background:T.surface,borderRadius:12,padding:4,border:`1px solid ${T.border}`}}>
-          {[["chat","💬 Чат",null],["pending","⏳ Очікують",agentPending.length],["history","📜 Історія",null]].map(([id,lb,cnt])=>
+          {[["chat","💬 Чат",null],["pending","⏳ Очікують",agentPending.length],["history","📜 Історія",null],["config","⚙️ Налаштування",null]].map(([id,lb,cnt])=>
             <div key={id} onClick={()=>setAgentTab(id)} style={{padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,background:agentTab===id?T.primary:"transparent",color:agentTab===id?"#fff":T.text,transition:"all .15s"}}>{lb}{cnt>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:10,background:agentTab===id?"rgba(255,255,255,.3)":T.danger,color:"#fff",fontSize:11}}>{cnt}</span>}</div>)}
         </div>
         <div style={{flex:1}}/>
@@ -841,6 +847,60 @@ function App(){
           </table>
         </div>}
       </>}
+
+      {agentTab==="config"&&<div style={{maxWidth:600}}>
+        {!agentCfg?<div style={{textAlign:"center",padding:40,color:T.textSec}}>Завантаження...</div>:<>
+        <div className="card" style={{padding:20,marginBottom:16}}>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>Автопілот Instagram</div>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+            <div onClick={()=>saveAgentConfig({enabled:!agentCfg.enabled})} style={{width:48,height:26,borderRadius:13,background:agentCfg.enabled?"#10b981":"#666",cursor:"pointer",position:"relative",transition:"all .2s"}}>
+              <div style={{width:22,height:22,borderRadius:11,background:"#fff",position:"absolute",top:2,left:agentCfg.enabled?24:2,transition:"all .2s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}/>
+            </div>
+            <span style={{fontSize:14,fontWeight:600}}>{agentCfg.enabled?"Увімкнено — агент відповідає автоматично":"Вимкнено — лише ручний режим (чат)"}</span>
+          </div>
+          <div style={{fontSize:12,color:T.textSec,lineHeight:1.5}}>Коли увімкнено: кожне нове повідомлення в Instagram автоматично обробляється AI-агентом. Безпечні відповіді відправляються одразу, ризиковані — у чергу «Очікують».</div>
+        </div>
+
+        <div className="card" style={{padding:20,marginBottom:16}}>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>Модель AI</div>
+          <select value={agentCfg.model||"claude-sonnet-4-20250514"} onChange={e=>saveAgentConfig({model:e.target.value})} style={{width:"100%",padding:"10px 14px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:14,background:T.surface,color:T.text}}>
+            <option value="claude-opus-4-6">Claude Opus 4.6 (найрозумніший, дорожчий)</option>
+            <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (баланс швидкість/якість)</option>
+            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (швидкий, дешевий)</option>
+          </select>
+          <div style={{fontSize:11,color:T.textSec,marginTop:6}}>Opus — для складних випадків, Sonnet — щоденна робота, Haiku — прості запити</div>
+        </div>
+
+        <div className="card" style={{padding:20,marginBottom:16}}>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:16}}>Ліміти гібридного режиму</div>
+          {[
+            {key:"order_auto_max_uah",label:"Макс. сума замовлення (авто)",suffix:" грн",min:0,max:50000,step:100},
+            {key:"order_auto_max_qty",label:"Макс. кількість товарів (авто)",suffix:" шт",min:1,max:20,step:1},
+            {key:"message_auto_max_len",label:"Макс. довжина повідомлення (авто)",suffix:" символів",min:50,max:1000,step:50},
+            {key:"payment_auto_min_conf",label:"Мін. confidence для оплати (авто)",suffix:"",min:0,max:1,step:0.05},
+            {key:"max_turns",label:"Макс. кроків агента за один запит",suffix:"",min:1,max:16,step:1},
+          ].map(f=><div key={f.key} style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:13,fontWeight:600}}>{f.label}</span>
+              <span style={{fontSize:13,color:T.primary,fontWeight:700}}>{agentCfg[f.key]}{f.suffix}</span>
+            </div>
+            <input type="range" min={f.min} max={f.max} step={f.step} value={agentCfg[f.key]||0} onChange={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);setAgentCfg(c=>({...c,[f.key]:v}));}} onMouseUp={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);saveAgentConfig({[f.key]:v});}} onTouchEnd={e=>{const v=f.step<1?parseFloat(e.target.value):parseInt(e.target.value);saveAgentConfig({[f.key]:v});}} style={{width:"100%",accentColor:T.primary}}/>
+          </div>)}
+        </div>
+
+        <div className="card" style={{padding:20}}>
+          <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>Стоп-слова (ризикові)</div>
+          <div style={{fontSize:12,color:T.textSec,marginBottom:12}}>Повідомлення з цими словами завжди йдуть на підтвердження менеджером:</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+            {(agentCfg.risky_words||[]).map((w,i)=><span key={i} style={{padding:"4px 10px",borderRadius:8,background:T.danger+"18",color:T.danger,fontSize:12,fontWeight:600,cursor:"pointer"}} onClick={()=>{if(!confirm(`Видалити «${w}»?`))return;const nw=(agentCfg.risky_words||[]).filter((_,j)=>j!==i);saveAgentConfig({risky_words:nw});}}>{w} ×</span>)}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <input id="newRiskyWord" placeholder="Нове слово..." style={{flex:1,padding:"8px 12px",border:`1px solid ${T.border}`,borderRadius:T.inputRadius,fontSize:13,background:T.surface,color:T.text}}/>
+            <button onClick={()=>{const inp=document.getElementById("newRiskyWord");const w=(inp.value||"").trim().toLowerCase();if(!w)return;const nw=[...(agentCfg.risky_words||[]),w];saveAgentConfig({risky_words:nw});inp.value="";}} style={{padding:"8px 16px",background:T.primary,color:"#fff",border:"none",borderRadius:T.btnRadius,fontSize:13,fontWeight:600,cursor:"pointer"}}>Додати</button>
+          </div>
+        </div>
+        </>}
+      </div>}
     </div>;
   };
 
