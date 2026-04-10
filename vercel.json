@@ -1,5 +1,12 @@
 {
-  "buildCommand": null,
-  "outputDirectory": ".",
-  "framework": null
+  "rewrites": [
+    {
+      "source": "/test-chat",
+      "destination": "/test-chat.html"
+    },
+    {
+      "source": "/((?!test-chat).*)",
+      "destination": "/index.html"
+    }
+  ]
 }
