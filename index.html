@@ -1639,7 +1639,7 @@ const ProductsPage=()=>{
   </div>;
 
   /* ═══ SETTINGS ═══ */
-  if(page==="settings") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",flexDirection:"column",background:T.bg}}>{isMobile?MobileSubHeader({title:"⚙️ Налаштування"}):Header()}{MobileSidebar()}
+  if(page==="settings") return <div onTouchStart={e=>{touchStart.current={x:e.touches[0].clientX};}} onTouchEnd={e=>{if(!touchStart.current)return;const dx=e.changedTouches[0].clientX-touchStart.current.x;touchStart.current=null;if(dx>60&&isMobile)setSidebarOpen(true);if(dx<-60&&isMobile)setSidebarOpen(false);}} style={{height:"100vh",display:"flex",background:T.bg}}>{!isMobile&&DesktopSidebar()}<div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,height:"100%",overflow:"hidden"}}>{isMobile?MobileSubHeader({title:"⚙️ Налаштування"}):Header()}{MobileSidebar()}
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       {!isMobile&&<div style={{width:240,borderRight:`1px solid ${T.border}`,padding:"14px 0",background:T.surface}}>
         {[["integrations","🔗 Інтеграції"],["payments","💳 Платіжні"],["funnels","🎯 Воронки"],["automations","🤖 Автоматизація"],["widgets","📦 Віджети"],["team","👥 Команда"],["bot","💬 Бот"]].map(([id,lb])=>
@@ -1960,6 +1960,7 @@ const ProductsPage=()=>{
         </div>}
         {settingsTab==="bot"&&<div><h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>Бот-налаштування</h2><p style={{color:T.textSec}}>В розробці</p></div>}
       </div>
+    </div>
     </div>
   </div>;
 
