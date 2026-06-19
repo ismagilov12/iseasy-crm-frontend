@@ -5,7 +5,11 @@
       "destination": "/test-chat.html"
     },
     {
-      "source": "/((?!test-chat).*)",
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/((?!test-chat|privacy).*)",
       "destination": "/index.html"
     }
   ]
